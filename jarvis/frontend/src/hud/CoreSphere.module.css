@@ -1,0 +1,93 @@
+.wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.canvasHost {
+  position: absolute;
+  inset: 0;
+}
+
+.canvasHost canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Soft bloom bed behind the particles so the core reads as emissive. */
+.halo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 78%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--j-glow, #7ee8ff) 26%, transparent) 0%,
+    color-mix(in srgb, var(--j-blue, #1b8fe0) 12%, transparent) 38%,
+    transparent 68%
+  );
+  filter: blur(14px);
+  transition: opacity 260ms ease;
+}
+
+/* Chromatic fringe — two offset rings tinted toward the blue secondary. */
+.fringe {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(
+      circle at 49% 50%,
+      transparent 30%,
+      color-mix(in srgb, var(--j-blue, #1b8fe0) 10%, transparent) 40%,
+      transparent 52%
+    ),
+    radial-gradient(
+      circle at 51% 50%,
+      transparent 30%,
+      color-mix(in srgb, var(--j-cyan, #4fd8ff) 9%, transparent) 41%,
+      transparent 53%
+    );
+  opacity: 0.9;
+}
+
+.fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--j-font, 'Rajdhani', 'Share Tech Mono', ui-monospace, monospace);
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--j-text-dim, #4d7f9c);
+}
+
+/* Static reduced-motion / no-WebGL stand-in: concentric emissive shells. */
+.fallback::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--j-glow, #7ee8ff) 55%, transparent) 0%,
+    color-mix(in srgb, var(--j-cyan, #4fd8ff) 22%, transparent) 45%,
+    transparent 72%
+  );
+  box-shadow: 0 0 60px color-mix(in srgb, var(--j-cyan, #4fd8ff) 30%, transparent);
+}

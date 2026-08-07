@@ -1,0 +1,210 @@
+.frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.55rem 0.7rem 0.6rem;
+  color: var(--j-text, #b8ecff);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--j-bg-2, #05122b) 82%, transparent),
+      color-mix(in srgb, var(--j-bg, #030a1a) 88%, transparent)
+    );
+  font-family: var(--j-font, 'Rajdhani', 'Share Tech Mono', ui-monospace, monospace);
+  isolation: isolate;
+}
+
+/* Faint inner hairline — the bracket corners do the real framing work. */
+.frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--j-cyan-dim, #1c6f92) 38%, transparent);
+  mask-image: linear-gradient(180deg, #000 0 18%, transparent 34% 66%, #000 82% 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0 18%, transparent 34% 66%, #000 82% 100%);
+}
+
+/* Horizontal grid wash inside every panel. */
+.frame::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  pointer-events: none;
+  z-index: -1;
+  background-image: linear-gradient(
+    to bottom,
+    var(--j-grid, rgba(79, 216, 255, 0.1)) 0 1px,
+    transparent 1px 4px
+  );
+  opacity: 0.55;
+}
+
+.corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  border-color: var(--j-cyan, #4fd8ff);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--j-cyan, #4fd8ff) 60%, transparent));
+}
+
+.tl {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid;
+  border-left: 2px solid;
+}
+.tr {
+  top: -1px;
+  right: -1px;
+  border-top: 2px solid;
+  border-right: 2px solid;
+}
+.bl {
+  bottom: -1px;
+  left: -1px;
+  border-bottom: 2px solid;
+  border-left: 2px solid;
+}
+.br {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid;
+  border-right: 2px solid;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+  flex: 0 0 auto;
+}
+
+.title {
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--j-glow, #7ee8ff);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--j-cyan, #4fd8ff) 70%, transparent);
+  white-space: nowrap;
+}
+
+.rule {
+  flex: 1 1 auto;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--j-cyan, #4fd8ff) 65%, transparent),
+    transparent
+  );
+}
+
+.status {
+  font-size: 0.56rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--j-text-dim, #4d7f9c);
+  white-space: nowrap;
+}
+
+.body {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.flush {
+  padding: 0;
+}
+.flush .head {
+  padding: 0.5rem 0.65rem 0;
+  margin-bottom: 0.3rem;
+}
+
+/* Tones re-map the accent used by corners + title. */
+.toneAmber .corner {
+  border-color: var(--j-amber, #ffb545);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--j-amber, #ffb545) 60%, transparent));
+}
+.toneAmber .title {
+  color: var(--j-amber, #ffb545);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--j-amber, #ffb545) 55%, transparent);
+}
+
+.toneRed .corner {
+  border-color: var(--j-red, #ff4d5e);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--j-red, #ff4d5e) 65%, transparent));
+}
+.toneRed .title {
+  color: var(--j-red, #ff4d5e);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--j-red, #ff4d5e) 55%, transparent);
+}
+
+.toneDim .corner {
+  border-color: var(--j-cyan-dim, #1c6f92);
+  filter: none;
+}
+.toneDim .title {
+  color: var(--j-text-dim, #4d7f9c);
+  text-shadow: none;
+}
+
+/* Scanline overlay — off by default, opt in per panel. */
+.scan .body::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0 2px,
+    color-mix(in srgb, var(--j-bg, #030a1a) 55%, transparent) 2px 3px
+  );
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+}
+
+.sweep {
+  position: absolute;
+  inset: 1px;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.sweep::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 28%;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--j-cyan, #4fd8ff) 9%, transparent),
+    transparent
+  );
+  animation: frameSweep 7.5s linear infinite;
+}
+
+@keyframes frameSweep {
+  0% {
+    transform: translateY(-120%);
+  }
+  100% {
+    transform: translateY(460%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sweep::before {
+    animation: none;
+    opacity: 0.35;
+  }
+}

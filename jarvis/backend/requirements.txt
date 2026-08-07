@@ -1,0 +1,40 @@
+# J.A.R.V.I.S. backend dependencies — pinned, minimal, installable.
+# Python 3.11+ required.
+
+# -- Web framework / server -------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+websockets==14.1
+python-multipart==0.0.20
+
+# -- Config / validation ------------------------------------------------
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# -- HTTP client (OpenRouter calls) ------------------------------------------
+httpx==0.28.1
+
+# -- System telemetry -------------------------------------------------------
+psutil==6.1.1
+
+# -- Numerics / embeddings ----------------------------------------------
+numpy==1.26.4
+# sentence-transformers pulls in torch (~2GB). Without it, memory recall
+# falls back to no semantic search (exact/keyword match only) if
+# memory-store chooses to degrade gracefully.
+sentence-transformers==3.3.1
+
+# -- Vision (all optional — without them, vision features degrade) ----------
+# opencv-python-headless: face/hand box drawing, frame decoding. Without it,
+# webcam frames cannot be decoded server-side at all.
+opencv-python-headless==4.10.0.84
+# mediapipe: face/hand landmark detection. Without it, `faces`/`hands`
+# counts in VisionResult stay at 0 (no detector available).
+mediapipe==0.10.18
+# rapidocr-onnxruntime: on-device OCR. Without it, VisionResult.text stays
+# empty (no OCR backend); scene description via LLM vision still works.
+rapidocr-onnxruntime==1.4.4
+
+# -- Persistence --------------------------------------------------------
+aiosqlite==0.20.0

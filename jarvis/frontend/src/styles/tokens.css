@@ -1,0 +1,316 @@
+/* ==========================================================================
+   J.A.R.V.I.S. — design tokens (authoritative, per CONTRACTS.md section 6)
+   Do not invent colors. Everything downstream consumes these variables.
+   ========================================================================== */
+
+:root {
+  --j-bg:        #030a1a;   /* deep navy void          */
+  --j-bg-2:      #05122b;   /* panel fill              */
+  --j-cyan:      #4fd8ff;   /* primary HUD line        */
+  --j-cyan-dim:  #1c6f92;   /* inactive line           */
+  --j-blue:      #1b8fe0;   /* secondary               */
+  --j-glow:      #7ee8ff;   /* emissive / text glow    */
+  --j-amber:     #ffb545;   /* warning                 */
+  --j-red:       #ff4d5e;   /* critical                */
+  --j-grid:      rgba(79, 216, 255, 0.10);
+  --j-text:      #b8ecff;
+  --j-text-dim:  #4d7f9c;
+
+  /* ---- derived, non-authoritative helpers (all built from the above) ---- */
+  --j-font:      'Rajdhani', 'Share Tech Mono', ui-monospace, monospace;
+  --j-font-mono: 'Share Tech Mono', 'Rajdhani', ui-monospace, monospace;
+
+  --j-track:     0.12em;              /* mandated letter-spacing */
+  --j-line:      1px;
+  --j-radius:    0;                   /* nothing rounded but the reticle */
+
+  --j-panel-bg:  linear-gradient(
+                   180deg,
+                   rgba(5, 18, 43, 0.82) 0%,
+                   rgba(3, 10, 26, 0.66) 100%
+                 );
+  --j-edge:      rgba(79, 216, 255, 0.28);
+  --j-edge-soft: rgba(79, 216, 255, 0.14);
+
+  --j-glow-sm:   0 0 6px rgba(126, 232, 255, 0.45);
+  --j-glow-md:   0 0 14px rgba(79, 216, 255, 0.35);
+  --j-glow-lg:   0 0 34px rgba(79, 216, 255, 0.22);
+  --j-text-glow: 0 0 8px rgba(126, 232, 255, 0.55);
+
+  --j-gap:       12px;
+  --j-pad:       12px;
+  --j-corner:    12px;                /* corner-bracket arm length */
+
+  --j-fs-xs:     10px;
+  --j-fs-sm:     11px;
+  --j-fs-md:     13px;
+  --j-fs-lg:     16px;
+  --j-fs-xl:     22px;
+
+  --j-ease:      cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Global reset
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--j-bg);
+  color: var(--j-text);
+  font-family: var(--j-font);
+  font-size: var(--j-fs-md);
+  font-weight: 500;
+  letter-spacing: var(--j-track);
+  line-height: 1.35;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd, ul, ol {
+  margin: 0;
+  padding: 0;
+}
+
+ul, ol { list-style: none; }
+
+img, svg, video, canvas {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  margin: 0;
+  border-radius: var(--j-radius);
+}
+
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
+
+:focus-visible {
+  outline: 1px solid var(--j-cyan);
+  outline-offset: 2px;
+}
+
+a { color: var(--j-cyan); text-decoration: none; }
+
+/* Thin HUD scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--j-cyan-dim) transparent;
+}
+
+*::-webkit-scrollbar { width: 5px; height: 5px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--j-cyan-dim);
+  border-radius: 0;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--j-cyan); }
+
+::selection {
+  background: rgba(79, 216, 255, 0.3);
+  color: var(--j-glow);
+}
+
+/* ==========================================================================
+   Ambient layers: animated grid, vignette, scanlines
+   All are pointer-events:none and sit behind/above the app shell.
+   ========================================================================== */
+
+.j-ambient {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Subtle animated grid ---------------------------------------------------- */
+.j-grid {
+  position: absolute;
+  inset: -60px;
+  background-image:
+    linear-gradient(var(--j-grid) var(--j-line), transparent var(--j-line)),
+    linear-gradient(90deg, var(--j-grid) var(--j-line), transparent var(--j-line));
+  background-size: 46px 46px, 46px 46px;
+  animation: j-grid-drift 24s linear infinite;
+  opacity: 0.85;
+}
+
+/* A second, larger grid drifting the other way adds depth. */
+.j-grid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(27, 143, 224, 0.06) var(--j-line), transparent var(--j-line)),
+    linear-gradient(90deg, rgba(27, 143, 224, 0.06) var(--j-line), transparent var(--j-line));
+  background-size: 184px 184px, 184px 184px;
+  animation: j-grid-drift-slow 46s linear infinite;
+}
+
+@keyframes j-grid-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(46px, 46px, 0); }
+}
+
+@keyframes j-grid-drift-slow {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-184px, 0, 0); }
+}
+
+/* Radial ambient bloom behind the core ------------------------------------ */
+.j-bloom {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 46% 52% at 50% 46%,
+      rgba(27, 143, 224, 0.16) 0%,
+      rgba(27, 143, 224, 0.05) 40%,
+      transparent 72%
+    );
+}
+
+/* Vignette ---------------------------------------------------------------- */
+.j-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 78% 80% at 50% 50%,
+      transparent 42%,
+      rgba(3, 10, 26, 0.55) 78%,
+      rgba(3, 10, 26, 0.92) 100%
+    );
+}
+
+/* Scanlines + rolling sweep ----------------------------------------------- */
+.j-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(79, 216, 255, 0.035) 0px,
+    rgba(79, 216, 255, 0.035) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: screen;
+  opacity: 0.6;
+}
+
+.j-scanlines::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 26vh;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(126, 232, 255, 0.05) 50%,
+    transparent 100%
+  );
+  animation: j-sweep 7.5s linear infinite;
+}
+
+@keyframes j-sweep {
+  from { transform: translateY(-30vh); }
+  to   { transform: translateY(130vh); }
+}
+
+/* ==========================================================================
+   Shared HUD primitives (used by panels; the HUD Frame owns the real chrome)
+   ========================================================================== */
+
+.j-label {
+  font-family: var(--j-font-mono);
+  font-size: var(--j-fs-xs);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--j-text-dim);
+}
+
+.j-value {
+  font-family: var(--j-font-mono);
+  color: var(--j-glow);
+  text-shadow: var(--j-text-glow);
+}
+
+/* Corner-bracket frame — never a plain border, never rounded. */
+.j-brackets {
+  position: relative;
+}
+
+.j-brackets::before,
+.j-brackets::after {
+  content: '';
+  position: absolute;
+  width: var(--j-corner);
+  height: var(--j-corner);
+  border-color: var(--j-cyan);
+  pointer-events: none;
+}
+
+.j-brackets::before {
+  top: 0;
+  left: 0;
+  border-top: var(--j-line) solid;
+  border-left: var(--j-line) solid;
+}
+
+.j-brackets::after {
+  bottom: 0;
+  right: 0;
+  border-bottom: var(--j-line) solid;
+  border-right: var(--j-line) solid;
+}
+
+@keyframes j-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.18; }
+}
+
+@keyframes j-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+
+/* ==========================================================================
+   Accessibility
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
