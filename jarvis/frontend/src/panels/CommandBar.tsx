@@ -55,7 +55,7 @@ export function CommandBar(): ReactElement {
         {liveTranscript ? <div className={styles.liveTranscript}>{liveTranscript}</div> : null}
 
         <div className={styles.waveRow}>
-          <Waveform levels={waveform} active={listening} />
+          <Waveform levels={waveform} active={listening} bare />
         </div>
 
         <div className={styles.inputRow}>

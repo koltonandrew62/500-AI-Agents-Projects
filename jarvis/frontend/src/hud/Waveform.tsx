@@ -207,7 +207,7 @@ export function Waveform({
     <Frame
       title={title}
       status={status ?? (active ? 'LIVE' : 'MUTED')}
-      tone={tone === 'cyan' ? 'cyan' : tone}
+      tone={tone}
       flush
       className={className}
       bodyClassName={styles.body}

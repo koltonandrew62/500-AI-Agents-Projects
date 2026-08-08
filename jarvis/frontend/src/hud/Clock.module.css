@@ -1,0 +1,118 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.12rem;
+  font-family: var(--j-font-mono, 'Share Tech Mono', ui-monospace, monospace);
+  text-transform: uppercase;
+  text-align: right;
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+}
+
+.label,
+.tz {
+  font-size: 0.55rem;
+  letter-spacing: 0.22em;
+  color: var(--j-text-dim, #4d7f9c);
+  white-space: nowrap;
+}
+
+.tz {
+  opacity: 0.7;
+}
+
+.timeRow {
+  display: flex;
+  align-items: baseline;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hms {
+  font-size: 2.05rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--j-glow, #7ee8ff);
+  text-shadow:
+    0 0 10px color-mix(in srgb, var(--j-cyan, #4fd8ff) 75%, transparent),
+    0 0 34px color-mix(in srgb, var(--j-blue, #1b8fe0) 45%, transparent);
+  /* Chromatic fringe — the cinematic tell. */
+  -webkit-text-stroke: 0.01em color-mix(in srgb, var(--j-cyan, #4fd8ff) 30%, transparent);
+}
+
+.dot {
+  font-size: 1.1rem;
+  color: var(--j-cyan-dim, #1c6f92);
+  padding: 0 0.06em;
+}
+
+.centis {
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  color: var(--j-cyan, #4fd8ff);
+  opacity: 0.82;
+  min-width: 1.5em;
+  text-align: left;
+}
+
+.date {
+  font-size: 0.6rem;
+  letter-spacing: 0.26em;
+  color: var(--j-text, #b8ecff);
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.geo {
+  margin-top: 0.32rem;
+  padding-top: 0.28rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.06rem;
+  align-items: flex-end;
+  border-top: 1px solid color-mix(in srgb, var(--j-cyan-dim, #1c6f92) 45%, transparent);
+  min-width: 9.5rem;
+}
+
+.geoRow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.geoKey {
+  font-size: 0.52rem;
+  letter-spacing: 0.2em;
+  color: var(--j-text-dim, #4d7f9c);
+}
+
+.geoVal {
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  color: var(--j-cyan, #4fd8ff);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.place {
+  margin-top: 0.14rem;
+  font-size: 0.55rem;
+  letter-spacing: 0.24em;
+  color: var(--j-text-dim, #4d7f9c);
+}
+
+.note {
+  margin-top: 0.16rem;
+  font-size: 0.53rem;
+  letter-spacing: 0.18em;
+  color: var(--j-text-dim, #4d7f9c);
+  opacity: 0.8;
+}

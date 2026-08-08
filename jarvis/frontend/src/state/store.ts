@@ -61,8 +61,8 @@ export interface JarvisState {
   liveTranscript: string;
   /** Current mic input level, 0-1, for the waveform while listening. */
   micLevel: number;
-  /** Downsampled waveform bars, 0-1 each, for the Waveform component. */
-  waveform: number[];
+  /** Downsampled waveform bars, 0-1 each, for the hud Waveform component. */
+  waveform: Float32Array;
 }
 
 const MAX_MESSAGES = 200;
@@ -81,7 +81,7 @@ function initialState(): JarvisState {
     toggles: { vision: true, voice: true, memory: true },
     liveTranscript: '',
     micLevel: 0,
-    waveform: new Array(24).fill(0) as number[],
+    waveform: new Float32Array(24),
   };
 }
 
@@ -211,7 +211,7 @@ class Store {
     this.patch({ micLevel: level });
   }
 
-  setWaveform(bars: number[]): void {
+  setWaveform(bars: Float32Array): void {
     this.patch({ waveform: bars });
   }
 

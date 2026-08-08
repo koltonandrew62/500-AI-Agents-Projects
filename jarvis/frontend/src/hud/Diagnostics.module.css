@@ -1,0 +1,103 @@
+.body {
+  overflow: hidden;
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.dense {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 0.9rem;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  font-family: var(--j-font-mono, 'Share Tech Mono', ui-monospace, monospace);
+  font-size: 0.56rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  /* Per-row accent, retinted by the tone classes. */
+  --diag: var(--j-cyan, #4fd8ff);
+}
+
+.cyan {
+  --diag: var(--j-cyan, #4fd8ff);
+}
+.amber {
+  --diag: var(--j-amber, #ffb545);
+}
+.red {
+  --diag: var(--j-red, #ff4d5e);
+}
+.dim {
+  --diag: var(--j-text-dim, #4d7f9c);
+}
+
+.key {
+  flex: 0 0 auto;
+  color: var(--j-text-dim, #4d7f9c);
+  white-space: nowrap;
+}
+
+/* Dotted leader between key and value — an instrument-panel tell. */
+.row::after {
+  content: '';
+  order: 1;
+  flex: 1 1 auto;
+  min-width: 0.8rem;
+  height: 1px;
+  align-self: center;
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--j-cyan-dim, #1c6f92) 70%, transparent) 0 1px,
+    transparent 1px 4px
+  );
+  opacity: 0.55;
+}
+
+.value {
+  order: 2;
+  flex: 0 0 auto;
+  margin: 0;
+  color: var(--diag);
+  text-shadow: 0 0 7px color-mix(in srgb, var(--diag) 45%, transparent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Hard, short flicker on the row currently being glitched. */
+.glitch .value {
+  color: var(--j-glow, #7ee8ff);
+  text-shadow:
+    0.5px 0 0 color-mix(in srgb, var(--j-red, #ff4d5e) 65%, transparent),
+    -0.5px 0 0 color-mix(in srgb, var(--j-cyan, #4fd8ff) 65%, transparent),
+    0 0 9px color-mix(in srgb, var(--j-cyan, #4fd8ff) 70%, transparent);
+  animation: diagFlicker 0.12s steps(3, end) infinite;
+}
+
+@keyframes diagFlicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.35;
+  }
+  70% {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glitch .value {
+    animation: none;
+  }
+}

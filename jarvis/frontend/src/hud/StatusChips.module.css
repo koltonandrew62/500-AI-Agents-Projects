@@ -1,0 +1,109 @@
+.list {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.wrap {
+  flex-wrap: wrap;
+  row-gap: 0.3rem;
+}
+
+.item {
+  display: flex;
+  min-width: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.1rem;
+  font-family: var(--j-font-mono, 'Share Tech Mono', ui-monospace, monospace);
+  font-size: 0.56rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* Per-chip accent, retinted by the tone classes. */
+  --chip: var(--j-cyan, #4fd8ff);
+  color: var(--chip);
+  background: none;
+  border: 0;
+}
+
+button.chip {
+  cursor: pointer;
+}
+
+button.chip:hover {
+  filter: brightness(1.35);
+}
+
+.cyan {
+  --chip: var(--j-cyan, #4fd8ff);
+}
+.amber {
+  --chip: var(--j-amber, #ffb545);
+}
+.red {
+  --chip: var(--j-red, #ff4d5e);
+}
+.dim {
+  --chip: var(--j-text-dim, #4d7f9c);
+}
+
+.bracket {
+  color: color-mix(in srgb, var(--chip) 62%, transparent);
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  background: var(--chip);
+  box-shadow: 0 0 6px var(--chip);
+}
+
+.on .dot {
+  animation: chipPulse 1.6s var(--j-ease, ease) infinite;
+}
+
+.off .dot {
+  background: color-mix(in srgb, var(--chip) 35%, transparent);
+  box-shadow: none;
+}
+
+.on .text {
+  text-shadow: 0 0 8px color-mix(in srgb, var(--chip) 55%, transparent);
+}
+
+.off {
+  opacity: 0.55;
+}
+
+.detail {
+  color: color-mix(in srgb, var(--chip) 72%, transparent);
+  letter-spacing: 0.1em;
+  opacity: 0.9;
+}
+
+@keyframes chipPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.32;
+    transform: scale(0.72);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .on .dot {
+    animation: none;
+  }
+}

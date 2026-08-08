@@ -140,15 +140,14 @@ export function useJarvis(): JarvisState & { actions: JarvisActions } {
           const level = micMeter.read(buf);
           store.setMicLevel(level);
           const step = Math.floor(buf.length / BARS) || 1;
-          const bars: number[] = [];
+          const bars = new Float32Array(BARS);
           for (let i = 0; i < BARS; i += 1) {
-            const sample = buf[i * step] ?? 0;
-            bars.push(Math.min(1, Math.abs(sample) * 3));
+            bars[i] = Math.min(1, Math.abs(buf[i * step] ?? 0) * 3);
           }
           store.setWaveform(bars);
         } else if (store.getSnapshot().micLevel !== 0) {
           store.setMicLevel(0);
-          store.setWaveform(new Array(BARS).fill(0));
+          store.setWaveform(new Float32Array(BARS));
         }
       }
       rafRef.current = requestAnimationFrame(tick);

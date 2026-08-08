@@ -1,21 +1,13 @@
 /**
  * Audio: mic level metering (for the Waveform), browser SpeechRecognition
  * (STT + wake-word), and SpeechSynthesis (TTS, deepest en-GB male voice).
- *
- * All three degrade to safe no-ops where the underlying Web API is missing —
- * this file must never throw just because a browser lacks a feature.
+ * All three degrade to safe no-ops where the underlying Web API is missing.
  */
 
-// ---------------------------------------------------------------------------
-// Mic level meter
-// ---------------------------------------------------------------------------
+// ---- Mic level meter --------------------------------------------------
 
 export type MicMeterState = 'idle' | 'starting' | 'live' | 'denied' | 'unsupported' | 'error';
-
-export interface MicMeterStatus {
-  state: MicMeterState;
-  message: string;
-}
+export interface MicMeterStatus { state: MicMeterState; message: string }
 
 function isGetUserMediaSupported(): boolean {
   return (
@@ -26,7 +18,6 @@ function isGetUserMediaSupported(): boolean {
 }
 
 type AudioCtor = typeof AudioContext;
-
 function resolveAudioContextCtor(): AudioCtor | null {
   if (typeof window === 'undefined') return null;
   const w = window as unknown as { AudioContext?: AudioCtor; webkitAudioContext?: AudioCtor };
@@ -35,8 +26,7 @@ function resolveAudioContextCtor(): AudioCtor | null {
 
 /**
  * Wraps getUserMedia({audio}) + AnalyserNode. `read()` fills the caller's
- * Float32Array with the current time-domain waveform (range roughly -1..1),
- * suitable for a Waveform component to sample every animation frame.
+ * Float32Array with the current time-domain waveform (range roughly -1..1).
  */
 export class MicLevelMeter {
   private stream: MediaStream | null = null;
@@ -52,22 +42,13 @@ export class MicLevelMeter {
     this.fftSize = options.fftSize ?? 1024;
   }
 
-  getStatus(): MicMeterStatus {
-    return this.status;
-  }
+  getStatus(): MicMeterStatus { return this.status; }
+  isLive(): boolean { return this.status.state === 'live'; }
+  get binCount(): number { return this.analyser?.fftSize ?? this.fftSize; }
 
   onStatus(listener: (status: MicMeterStatus) => void): () => void {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
-  }
-
-  isLive(): boolean {
-    return this.status.state === 'live';
-  }
-
-  /** Number of samples `read()` will produce. */
-  get binCount(): number {
-    return this.analyser?.fftSize ?? this.fftSize;
   }
 
   async start(): Promise<boolean> {
@@ -83,7 +64,6 @@ export class MicLevelMeter {
       this.setStatus({ state: 'unsupported', message: 'WEB AUDIO NOT SUPPORTED IN THIS BROWSER.' });
       return false;
     }
-
     this.setStatus({ state: 'starting', message: 'INITIALIZING MIC…' });
 
     this.starting = (async (): Promise<boolean> => {
@@ -95,7 +75,6 @@ export class MicLevelMeter {
         analyser.fftSize = this.fftSize;
         analyser.smoothingTimeConstant = 0.75;
         source.connect(analyser);
-
         this.stream = stream;
         this.ctx = ctx;
         this.source = source;
@@ -104,8 +83,7 @@ export class MicLevelMeter {
         return true;
       } catch (err) {
         const name = typeof err === 'object' && err !== null && 'name' in err
-          ? String((err as { name: unknown }).name)
-          : '';
+          ? String((err as { name: unknown }).name) : '';
         if (name === 'NotAllowedError' || name === 'SecurityError') {
           this.setStatus({ state: 'denied', message: 'MIC ACCESS DENIED.' });
         } else {
@@ -116,69 +94,44 @@ export class MicLevelMeter {
         this.starting = null;
       }
     })();
-
     return this.starting;
   }
 
   stop(): void {
-    if (this.source) {
-      try { this.source.disconnect(); } catch { /* noop */ }
-      this.source = null;
-    }
+    if (this.source) { try { this.source.disconnect(); } catch { /* noop */ } this.source = null; }
     this.analyser = null;
-    if (this.stream) {
-      for (const track of this.stream.getTracks()) track.stop();
-      this.stream = null;
-    }
-    if (this.ctx) {
-      void this.ctx.close().catch(() => { /* noop */ });
-      this.ctx = null;
-    }
+    if (this.stream) { for (const t of this.stream.getTracks()) t.stop(); this.stream = null; }
+    if (this.ctx) { void this.ctx.close().catch(() => { /* noop */ }); this.ctx = null; }
     if (this.status.state !== 'denied' && this.status.state !== 'unsupported') {
       this.setStatus({ state: 'idle', message: 'MIC STANDBY' });
     }
   }
 
   /** Fills `target` with time-domain samples; returns a coarse 0-1 RMS level. */
-  read(target: Float32Array): number {
+  read(target: Float32Array<ArrayBuffer>): number {
     const analyser = this.analyser;
-    if (!analyser) {
-      target.fill(0);
-      return 0;
-    }
+    if (!analyser) { target.fill(0); return 0; }
     analyser.getFloatTimeDomainData(target);
     let sumSquares = 0;
-    for (let i = 0; i < target.length; i += 1) {
-      const v = target[i] ?? 0;
-      sumSquares += v * v;
-    }
+    for (let i = 0; i < target.length; i += 1) { const v = target[i] ?? 0; sumSquares += v * v; }
     return Math.min(1, Math.sqrt(sumSquares / target.length) * 4);
   }
 
-  dispose(): void {
-    this.stop();
-    this.listeners.clear();
-  }
+  dispose(): void { this.stop(); this.listeners.clear(); }
 
   private setStatus(next: MicMeterStatus): void {
     if (this.status.state === next.state && this.status.message === next.message) return;
     this.status = next;
-    for (const listener of Array.from(this.listeners)) {
-      try { listener(next); } catch (err) { console.error('[audio] mic status listener threw', err); }
+    for (const l of Array.from(this.listeners)) {
+      try { l(next); } catch (err) { console.error('[audio] mic status listener threw', err); }
     }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Speech recognition (STT) with wake-word detection
-// ---------------------------------------------------------------------------
+// ---- Speech recognition (STT) with wake-word detection -----------------
 
 export type RecognizerState = 'idle' | 'listening' | 'unsupported' | 'error';
-
-export interface RecognizerStatus {
-  state: RecognizerState;
-  message: string;
-}
+export interface RecognizerStatus { state: RecognizerState; message: string }
 
 /** Minimal shape of the non-standard SpeechRecognition API. */
 interface SpeechRecognitionLike extends EventTarget {
@@ -192,12 +145,10 @@ interface SpeechRecognitionLike extends EventTarget {
   onerror: ((event: { error?: string }) => void) | null;
   onend: (() => void) | null;
 }
-
 interface SpeechRecognitionEventLike {
   resultIndex: number;
   results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>;
 }
-
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
 function resolveRecognitionCtor(): SpeechRecognitionCtor | null {
@@ -214,14 +165,12 @@ export interface SpeechRecognizerOptions {
   wakeWord?: string;
   lang?: string;
 }
-
 type ResultListener = (text: string, isFinal: boolean) => void;
 type WakeListener = (utterance: string) => void;
 
 /**
  * Continuous STT wrapper. Fires `onResult` for every interim/final chunk and
  * `onWake` the first time the configured wake word appears in a chunk.
- * No-ops (state 'unsupported') on browsers without SpeechRecognition.
  */
 export class SpeechRecognizer {
   private recognition: SpeechRecognitionLike | null = null;
@@ -239,24 +188,18 @@ export class SpeechRecognizer {
     this.lang = options.lang ?? 'en-GB';
   }
 
-  static isSupported(): boolean {
-    return resolveRecognitionCtor() !== null;
-  }
-
-  getStatus(): RecognizerStatus {
-    return this.status;
-  }
+  static isSupported(): boolean { return resolveRecognitionCtor() !== null; }
+  getStatus(): RecognizerStatus { return this.status; }
+  isListening(): boolean { return this.status.state === 'listening'; }
 
   onStatus(listener: (status: RecognizerStatus) => void): () => void {
     this.statusListeners.add(listener);
     return () => { this.statusListeners.delete(listener); };
   }
-
   onResult(listener: ResultListener): () => void {
     this.resultListeners.add(listener);
     return () => { this.resultListeners.delete(listener); };
   }
-
   /** Fires once per detected wake-word utterance with the full chunk text. */
   onWake(listener: WakeListener): () => void {
     this.wakeListeners.add(listener);
@@ -270,7 +213,6 @@ export class SpeechRecognizer {
       this.setStatus({ state: 'unsupported', message: 'SPEECH RECOGNITION NOT SUPPORTED IN THIS BROWSER.' });
       return;
     }
-
     this.stoppedByUser = false;
     const recognition = new Ctor();
     recognition.continuous = true;
@@ -290,28 +232,24 @@ export class SpeechRecognizer {
         if (text.toLowerCase().includes(this.wakeWord)) this.emitWake(text);
       }
     };
-
     recognition.onerror = (event) => {
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         this.setStatus({ state: 'error', message: 'VOICE INPUT ACCESS DENIED.' });
         this.stoppedByUser = true;
       }
     };
-
     recognition.onend = () => {
       if (this.stoppedByUser) {
         this.setStatus({ state: 'idle', message: 'VOICE INPUT STANDBY' });
         return;
       }
-      // Browsers auto-stop continuous recognition after a period of silence.
-      // Restart transparently unless the caller explicitly stopped us.
+      // Browsers auto-stop continuous recognition after silence; restart
+      // transparently unless the caller explicitly stopped us.
       if (!this.restarting) {
         this.restarting = true;
         setTimeout(() => {
           this.restarting = false;
-          if (!this.stoppedByUser) {
-            try { recognition.start(); } catch { /* already running */ }
-          }
+          if (!this.stoppedByUser) { try { recognition.start(); } catch { /* already running */ } }
         }, 250);
       }
     };
@@ -327,15 +265,9 @@ export class SpeechRecognizer {
 
   stop(): void {
     this.stoppedByUser = true;
-    if (this.recognition) {
-      try { this.recognition.stop(); } catch { /* noop */ }
-    }
+    if (this.recognition) { try { this.recognition.stop(); } catch { /* noop */ } }
     this.recognition = null;
     this.setStatus({ state: 'idle', message: 'VOICE INPUT STANDBY' });
-  }
-
-  isListening(): boolean {
-    return this.status.state === 'listening';
   }
 
   dispose(): void {
@@ -346,34 +278,28 @@ export class SpeechRecognizer {
   }
 
   private emitResult(text: string, isFinal: boolean): void {
-    for (const listener of Array.from(this.resultListeners)) {
-      try { listener(text, isFinal); } catch (err) { console.error('[audio] result listener threw', err); }
+    for (const l of Array.from(this.resultListeners)) {
+      try { l(text, isFinal); } catch (err) { console.error('[audio] result listener threw', err); }
     }
   }
-
   private emitWake(utterance: string): void {
-    for (const listener of Array.from(this.wakeListeners)) {
-      try { listener(utterance); } catch (err) { console.error('[audio] wake listener threw', err); }
+    for (const l of Array.from(this.wakeListeners)) {
+      try { l(utterance); } catch (err) { console.error('[audio] wake listener threw', err); }
     }
   }
-
   private setStatus(next: RecognizerStatus): void {
     if (this.status.state === next.state && this.status.message === next.message) return;
     this.status = next;
-    for (const listener of Array.from(this.statusListeners)) {
-      try { listener(next); } catch (err) { console.error('[audio] status listener threw', err); }
+    for (const l of Array.from(this.statusListeners)) {
+      try { l(next); } catch (err) { console.error('[audio] status listener threw', err); }
     }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Speech synthesis (TTS) — deepest available en-GB male voice
-// ---------------------------------------------------------------------------
+// ---- Speech synthesis (TTS) — deepest available en-GB male voice -------
 
 /** Known deep-leaning en-GB male voice names across Chrome/Edge/Safari, best first. */
-const PREFERRED_VOICE_NAMES = [
-  'Daniel', 'Arthur', 'George', 'Ryan', 'Oliver', 'Google UK English Male',
-];
+const PREFERRED_VOICE_NAMES = ['Daniel', 'Arthur', 'George', 'Ryan', 'Oliver', 'Google UK English Male'];
 
 function isSpeechSynthesisSupported(): boolean {
   return typeof window !== 'undefined' && typeof window.speechSynthesis !== 'undefined';
@@ -381,23 +307,18 @@ function isSpeechSynthesisSupported(): boolean {
 
 function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
   if (voices.length === 0) return null;
-
   for (const name of PREFERRED_VOICE_NAMES) {
     const hit = voices.find((v) => v.name === name);
     if (hit) return hit;
   }
-
   const enGbMale = voices.find(
     (v) => v.lang.toLowerCase() === 'en-gb' && /male/i.test(v.name) && !/female/i.test(v.name),
   );
   if (enGbMale) return enGbMale;
-
   const enGb = voices.find((v) => v.lang.toLowerCase() === 'en-gb');
   if (enGb) return enGb;
-
   const enAny = voices.find((v) => v.lang.toLowerCase().startsWith('en'));
   if (enAny) return enAny;
-
   return voices[0] ?? null;
 }
 
@@ -421,24 +342,15 @@ export class Speaker {
   private readonly onVoicesChanged = (): void => this.refreshVoice();
 
   constructor(options: SpeakerOptions = {}) {
-    this.opts = {
-      pitch: options.pitch ?? 0.82,
-      rate: options.rate ?? 0.98,
-      volume: options.volume ?? 1,
-    };
+    this.opts = { pitch: options.pitch ?? 0.82, rate: options.rate ?? 0.98, volume: options.volume ?? 1 };
     if (isSpeechSynthesisSupported()) {
       this.refreshVoice();
       window.speechSynthesis.addEventListener('voiceschanged', this.onVoicesChanged);
     }
   }
 
-  static isSupported(): boolean {
-    return isSpeechSynthesisSupported();
-  }
-
-  isSpeaking(): boolean {
-    return this.speaking;
-  }
+  static isSupported(): boolean { return isSpeechSynthesisSupported(); }
+  isSpeaking(): boolean { return this.speaking; }
 
   onSpeakingChange(listener: (speaking: boolean) => void): () => void {
     this.listeners.add(listener);
@@ -448,7 +360,6 @@ export class Speaker {
   speak(text: string): void {
     const clean = text.trim();
     if (!clean || !isSpeechSynthesisSupported()) return;
-
     const utterance = new SpeechSynthesisUtterance(clean);
     if (this.voice) utterance.voice = this.voice;
     utterance.pitch = this.opts.pitch;
@@ -457,7 +368,6 @@ export class Speaker {
     utterance.onstart = () => this.setSpeaking(true);
     utterance.onend = () => this.setSpeaking(false);
     utterance.onerror = () => this.setSpeaking(false);
-
     window.speechSynthesis.speak(utterance);
   }
 
@@ -480,12 +390,11 @@ export class Speaker {
     if (voices.length === 0) return;
     this.voice = pickVoice(voices);
   }
-
   private setSpeaking(next: boolean): void {
     if (this.speaking === next) return;
     this.speaking = next;
-    for (const listener of Array.from(this.listeners)) {
-      try { listener(next); } catch (err) { console.error('[audio] speaking listener threw', err); }
+    for (const l of Array.from(this.listeners)) {
+      try { l(next); } catch (err) { console.error('[audio] speaking listener threw', err); }
     }
   }
 }

@@ -49,17 +49,23 @@ def _connect() -> sqlite3.Connection:
 async def _run_db(fn: Callable[[sqlite3.Connection], Any]) -> Any:
     """Run a synchronous sqlite operation off the event loop, serialized."""
     async with _db_lock:
-        conn = _connect()
-        try:
-            return await asyncio.to_thread(_with_conn, conn, fn)
-        finally:
-            conn.close()
+        return await asyncio.to_thread(_with_conn, fn)
 
 
-def _with_conn(conn: sqlite3.Connection, fn: Callable[[sqlite3.Connection], Any]) -> Any:
-    result = fn(conn)
-    conn.commit()
-    return result
+def _with_conn(fn: Callable[[sqlite3.Connection], Any]) -> Any:
+    """Open, use, and close the connection all on the worker thread.
+
+    sqlite3 connections are bound to the thread that created them, so the
+    connection must not be opened on the event loop and then handed to
+    `asyncio.to_thread` — that raises ProgrammingError on first use.
+    """
+    conn = _connect()
+    try:
+        result = fn(conn)
+        conn.commit()
+        return result
+    finally:
+        conn.close()
 
 
 @register
