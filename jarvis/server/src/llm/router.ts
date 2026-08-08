@@ -14,13 +14,22 @@
  * `RoutedCompletion.modelUsed` for one-shot calls, `RoutedStream.modelUsed`
  * for streaming calls (set as soon as the winning model is known, before the
  * first chunk is yielded).
+ *
+ * Optional xAI (Grok) opt-in: a chain listed in `xaiChains` is served by a
+ * single `XaiProvider` (see xai.ts) instead of the OpenRouter fallback list
+ * -- xAI is a single paid model, not a free-tier fallback chain, so there's
+ * nothing to fall back across. Every chain not listed behaves exactly as
+ * before; `xaiChains` defaults to empty, so by default this class's behavior
+ * is byte-for-byte what it was before xAI existed.
  */
 
-import type { LLMDelta, Message, RoutedCompletion, ToolSpec } from '../types.js';
+import type { LLMDelta, LLMProvider, Message, RoutedCompletion, ToolSpec } from '../types.js';
 import { AllModelsExhausted, BadResponse, NoKey, ProviderDown, RateLimited } from './errors.js';
 import { OpenRouterProvider } from './openrouter.js';
+import { XaiProvider } from './xai.js';
 
 export type ChainName = 'planning' | 'chat' | 'vision';
+const CHAIN_NAMES: readonly ChainName[] = ['planning', 'chat', 'vision'];
 
 export const PLANNING_CHAIN: readonly string[] = [
   'deepseek/deepseek-r1:free',
@@ -48,6 +57,16 @@ export interface ModelRouterOptions {
   maxAttemptsPerModel?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
+
+  /**
+   * Optional xAI (Grok) backend. Providing this does NOT by itself change
+   * any routing -- a chain only moves to xAI if it's also named in
+   * `xaiChains`. `apiKey` may be omitted here and read from `XAI_API_KEY` by
+   * `XaiProvider` at call time instead, matching the OpenRouter key pattern.
+   */
+  xai?: { apiKey?: string; baseUrl?: string; model?: string; visionModel?: string };
+  /** Chain names to serve via xAI instead of OpenRouter. Default: none -- fully inert. */
+  xaiChains?: readonly string[];
 }
 
 /** An `AsyncIterable<LLMDelta>` that also exposes which model served it. */
@@ -98,7 +117,10 @@ export class ModelRouter {
   private readonly baseDelayMs: number;
   private readonly maxDelayMs: number;
   private readonly providers = new Map<string, OpenRouterProvider>();
+  private readonly xaiProviders = new Map<string, XaiProvider>();
   private readonly apiKey: string | undefined;
+  private readonly xaiOpts: { apiKey?: string; baseUrl?: string; model?: string; visionModel?: string };
+  private readonly xaiChains: ReadonlySet<ChainName>;
 
   /**
    * Best-effort, process-wide "who served last" convenience field. Not
@@ -117,13 +139,32 @@ export class ModelRouter {
     this.maxAttempts = Math.max(1, opts.maxAttemptsPerModel ?? DEFAULT_MAX_ATTEMPTS_PER_MODEL);
     this.baseDelayMs = opts.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
     this.maxDelayMs = opts.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
+    this.xaiOpts = opts.xai ?? {};
+    // Unknown names are dropped rather than throwing -- a stale/typo'd env
+    // value should degrade to "that chain stays on OpenRouter", not crash boot.
+    this.xaiChains = new Set((opts.xaiChains ?? []).filter((c): c is ChainName => CHAIN_NAMES.includes(c as ChainName)));
+  }
+
+  /** The models actually in play for `name` right now -- the xAI single-model override if opted in, else the OpenRouter fallback chain. */
+  private effectiveChain(name: ChainName): readonly string[] {
+    if (!this.xaiChains.has(name)) return this.chains[name];
+    const model = name === 'vision' ? this.xaiOpts.visionModel : this.xaiOpts.model;
+    return [model ?? 'grok-4'];
   }
 
   chainFor(name: ChainName): readonly string[] {
-    return this.chains[name];
+    return this.effectiveChain(name);
   }
 
-  private providerFor(model: string): OpenRouterProvider {
+  private providerFor(model: string, chainName: ChainName): OpenRouterProvider | XaiProvider {
+    if (this.xaiChains.has(chainName)) {
+      let provider = this.xaiProviders.get(model);
+      if (!provider) {
+        provider = new XaiProvider(model, { apiKey: this.xaiOpts.apiKey, baseUrl: this.xaiOpts.baseUrl });
+        this.xaiProviders.set(model, provider);
+      }
+      return provider;
+    }
     let provider = this.providers.get(model);
     if (!provider) {
       provider = new OpenRouterProvider(model, { apiKey: this.apiKey });
@@ -146,11 +187,11 @@ export class ModelRouter {
   private async runChain(
     chainName: ChainName,
     signal: AbortSignal | undefined,
-    call: (provider: OpenRouterProvider) => Promise<string>,
+    call: (provider: LLMProvider) => Promise<string>,
   ): Promise<RoutedCompletion> {
     const errors = new Map<string, Error>();
-    for (const model of this.chains[chainName]) {
-      const provider = this.providerFor(model);
+    for (const model of this.effectiveChain(chainName)) {
+      const provider = this.providerFor(model, chainName);
       let attempt = 1;
       while (attempt <= this.maxAttempts) {
         try {
@@ -208,8 +249,8 @@ export class ModelRouter {
     routed: RoutedStreamImpl,
   ): AsyncGenerator<LLMDelta> {
     const errors = new Map<string, Error>();
-    for (const model of this.chains[chainName]) {
-      const provider = this.providerFor(model);
+    for (const model of this.effectiveChain(chainName)) {
+      const provider = this.providerFor(model, chainName);
       let attempt = 1;
       while (attempt <= this.maxAttempts) {
         const gen = provider.stream(messages, tools, signal)[Symbol.asyncIterator]();

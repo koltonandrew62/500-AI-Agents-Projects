@@ -52,14 +52,34 @@ interface ToolRegistryLike {
   all(): unknown[];
 }
 
+interface ModelRouterCtorOpts {
+  apiKey?: string;
+  chains?: typeof config.models;
+  xai?: { apiKey?: string; baseUrl?: string; model?: string; visionModel?: string };
+  xaiChains?: readonly string[];
+}
+
 async function loadLLMProvider(): Promise<LLMProviderLike | null> {
   try {
     const mod = await import('./llm/index.js');
     const Ctor = (mod as Record<string, unknown>).ModelRouter as
-      | (new (opts: { apiKey?: string; chains?: typeof config.models }) => LLMProviderLike)
+      | (new (opts: ModelRouterCtorOpts) => LLMProviderLike)
       | undefined;
     if (!Ctor) throw new Error("llm/index.js did not export 'ModelRouter'");
-    return new Ctor({ apiKey: config.openrouterApiKey || undefined, chains: config.models });
+    // xaiChains defaults to [] (see config.ts) -- until the user sets
+    // JARVIS_XAI_CHAINS, this is byte-for-byte the same router as before
+    // xAI existed. Grok stays "available but inert" per the user's choice.
+    return new Ctor({
+      apiKey: config.openrouterApiKey || undefined,
+      chains: config.models,
+      xai: {
+        apiKey: config.xaiApiKey || undefined,
+        baseUrl: config.xaiBaseUrl,
+        model: config.xaiModel,
+        visionModel: config.xaiVisionModel,
+      },
+      xaiChains: config.xaiChains,
+    });
   } catch (err) {
     console.warn('[index] llm subsystem unavailable at startup:', errMsg(err));
     return null;

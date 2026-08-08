@@ -108,6 +108,12 @@ export interface Config {
   xaiBaseUrl: string;
   xaiModel: string;
   xaiVisionModel: string;
+  /**
+   * Which named chains ('planning'|'chat'|'vision') route through xAI
+   * instead of the free OpenRouter chain. Empty by default -- xAI is wired
+   * in but fully inert until the user opts a chain in explicitly.
+   */
+  xaiChains: string[];
 
   models: ModelChains;
 
@@ -152,6 +158,9 @@ function buildConfig(): Config {
     // if either default 404s, and override via env rather than editing here.
     xaiModel: env('XAI_MODEL') ?? 'grok-4',
     xaiVisionModel: env('XAI_VISION_MODEL') ?? 'grok-4',
+    xaiChains: envList('JARVIS_XAI_CHAINS', []).filter((c) =>
+      (['planning', 'chat', 'vision'] as const).includes(c as 'planning' | 'chat' | 'vision'),
+    ),
 
     models: {
       planning: envList('JARVIS_PLANNING_MODELS', DEFAULT_PLANNING_MODELS),
