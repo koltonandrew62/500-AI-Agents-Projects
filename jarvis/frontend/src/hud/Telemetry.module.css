@@ -1,0 +1,125 @@
+.body {
+  overflow: hidden;
+}
+
+.list {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-right: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 1px 0;
+  font-family: var(--j-font-mono, 'Share Tech Mono', ui-monospace, monospace);
+  font-size: 0.58rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* Per-row accent, retinted by the level classes. */
+  --lvl: var(--j-text, #b8ecff);
+  color: var(--lvl);
+  animation: telemetryIn 260ms var(--j-ease, ease) both;
+}
+
+/* Newest row gets a faint lit backing so the eye finds it instantly. */
+.row:first-child {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--lvl) 12%, transparent),
+    transparent 72%
+  );
+}
+
+@keyframes telemetryIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    filter: brightness(2.2);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.time {
+  flex: 0 0 auto;
+  color: var(--j-text-dim, #4d7f9c);
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.mark {
+  flex: 0 0 auto;
+  opacity: 0.9;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--lvl) 70%, transparent);
+}
+
+.source {
+  flex: 0 0 auto;
+  color: var(--j-blue, #1b8fe0);
+  opacity: 0.9;
+}
+
+.text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- levels ---- */
+.debug {
+  --lvl: var(--j-cyan-dim, #1c6f92);
+  opacity: 0.75;
+}
+.info {
+  --lvl: var(--j-text, #b8ecff);
+}
+.ok {
+  --lvl: var(--j-cyan, #4fd8ff);
+}
+.warn {
+  --lvl: var(--j-amber, #ffb545);
+}
+.error {
+  --lvl: var(--j-red, #ff4d5e);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--j-red, #ff4d5e) 55%, transparent);
+}
+
+/* Soft edges so rows dissolve rather than clip at the panel bounds. */
+.fadeTop,
+.fadeBottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 12px;
+  pointer-events: none;
+}
+
+.fadeTop {
+  top: 0;
+  background: linear-gradient(180deg, var(--j-bg-2, #05122b), transparent);
+  opacity: 0.65;
+}
+
+.fadeBottom {
+  bottom: 0;
+  background: linear-gradient(0deg, var(--j-bg, #030a1a), transparent);
+  opacity: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    animation: none;
+  }
+}
