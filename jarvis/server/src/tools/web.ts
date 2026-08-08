@@ -53,10 +53,15 @@ function parseDdgHtml(html: string, maxResults: number): SearchResult[] {
     const block = blockMatch[0];
     const linkMatch = linkRe.exec(block);
     if (!linkMatch) continue;
+    // Both capture groups in linkRe are mandatory, so they're always present
+    // on a successful match — guard rather than assert for clarity.
     const url = linkMatch[1];
-    const title = decodeEntities(stripHtml(linkMatch[2]));
+    const titleRaw = linkMatch[2];
+    if (url === undefined || titleRaw === undefined) continue;
+    const title = decodeEntities(stripHtml(titleRaw));
     const snippetMatch = snippetRe.exec(block);
-    const snippet = snippetMatch ? decodeEntities(stripHtml(snippetMatch[1])) : '';
+    const snippetRaw = snippetMatch?.[1];
+    const snippet = snippetRaw !== undefined ? decodeEntities(stripHtml(snippetRaw)) : '';
     results.push({ title, url, snippet });
   }
   return results;
@@ -217,8 +222,11 @@ const NEWS_FEED_URL = 'https://news.google.com/rss';
 function extractTagText(itemXml: string, tag: string): string {
   const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i');
   const match = re.exec(itemXml);
-  if (!match) return '';
-  return decodeEntities(match[1].replace(/^<!\[CDATA\[([\s\S]*?)\]\]>$/, '$1')).trim();
+  // The single capture group is mandatory in the pattern above, so it is
+  // always present on a successful match.
+  const captured = match?.[1];
+  if (captured === undefined) return '';
+  return decodeEntities(captured.replace(/^<!\[CDATA\[([\s\S]*?)\]\]>$/, '$1')).trim();
 }
 
 const getNewsTool: Tool = {
@@ -255,7 +263,11 @@ const getNewsTool: Tool = {
       return fail('Could not parse RSS feed: no <rss> or <feed> root element found');
     }
 
-    const headlines = items.map((m) => extractTagText(m[1], 'title')).filter((h) => h.length > 0);
+    // Each `m` comes from a successful match of `<item>([\s\S]*?)<\/item>`,
+    // whose single capture group is mandatory and thus always populated.
+    const headlines = items
+      .map((m) => (m[1] !== undefined ? extractTagText(m[1], 'title') : ''))
+      .filter((h) => h.length > 0);
     return {
       ok: true,
       output: headlines.map((h, i) => `${i + 1}. ${h}`).join('\n'),

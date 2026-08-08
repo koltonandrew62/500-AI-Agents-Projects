@@ -50,7 +50,10 @@ function findModuleReferences(source: string): string[] {
   ];
   for (const re of patterns) {
     for (const match of source.matchAll(re)) {
-      found.push(match[2]);
+      // Group 2 is a mandatory (non-`?`) capture in all three patterns, so it
+      // is always populated whenever `matchAll` yields a match at all.
+      const mod = match[2];
+      if (mod !== undefined) found.push(mod);
     }
   }
   return found;
@@ -61,7 +64,10 @@ function findUnsafeFsWrites(source: string): string[] {
   const violations: string[] = [];
   const writeCallRe = /\b(?:fs\.)?(writeFileSync|writeFile|appendFileSync|appendFile|unlinkSync|unlink|rmSync|rmdirSync|rmdir|rm)\s*\(\s*(['"])(.*?)\2/g;
   for (const match of source.matchAll(writeCallRe)) {
+    // Both capture groups are mandatory in the pattern above, so they are
+    // always populated on a successful match; guard rather than assert.
     const [, fn, , arg] = match;
+    if (fn === undefined || arg === undefined) continue;
     if (arg.startsWith('/') || arg.startsWith('~') || arg.includes('..')) {
       violations.push(`write-mode ${fn}() outside sandbox cwd: ${JSON.stringify(arg)}`);
     }
@@ -74,7 +80,9 @@ export function checkJsSource(source: string): string[] {
   const violations: string[] = [];
 
   for (const mod of findModuleReferences(source)) {
-    const root = mod.split('/')[0];
+    // split() on a non-empty string always yields at least one element, so
+    // this is provably safe; `?? mod` just keeps the type checker satisfied.
+    const root = mod.split('/')[0] ?? mod;
     if (BANNED_MODULES.includes(mod) || BANNED_MODULES.includes(root)) {
       violations.push(`import of banned module: ${mod}`);
     }
@@ -205,12 +213,14 @@ function tokenize(command: string): string[] | null {
   let i = 0;
   const n = command.length;
   while (i < n) {
-    while (i < n && /\s/.test(command[i])) i++;
+    // .charAt() returns '' rather than undefined past the end of the string,
+    // so it sidesteps noUncheckedIndexedAccess without needing a guard.
+    while (i < n && /\s/.test(command.charAt(i))) i++;
     if (i >= n) break;
     let token = '';
     let quote: '"' | "'" | null = null;
     while (i < n) {
-      const ch = command[i];
+      const ch = command.charAt(i);
       if (quote) {
         if (ch === quote) {
           quote = null;
@@ -256,8 +266,12 @@ const execShellTool: Tool = {
       return fail('Empty command');
     }
 
-    const [program, ...rest] = tokens;
-    if (!SHELL_ALLOWLIST.has(program)) {
+    // `tokens.length === 0` was already rejected above, so `tokens[0]` is
+    // reachable, but TS can't correlate a prior .length check with index
+    // safety through a destructure — check explicitly instead of asserting.
+    const program = tokens[0];
+    const rest = tokens.slice(1);
+    if (program === undefined || !SHELL_ALLOWLIST.has(program)) {
       return fail(`Command not allowlisted: ${JSON.stringify(program)}`);
     }
 
@@ -267,9 +281,9 @@ const execShellTool: Tool = {
       const child = execFile(
         program,
         rest,
-        { timeout: SHELL_TIMEOUT_MS, windowsHide: true },
-        (error, stdout, stderr) => {
-          if (error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+        { timeout: SHELL_TIMEOUT_MS, windowsHide: true, encoding: 'utf8' as const },
+        (error: import('node:child_process').ExecFileException | null, stdout: string, stderr: string) => {
+          if (error && error.code === 'ENOENT') {
             resolve(fail(`Command not found: ${JSON.stringify(program)}`));
             return;
           }

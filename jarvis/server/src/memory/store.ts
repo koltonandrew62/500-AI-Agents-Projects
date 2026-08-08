@@ -53,9 +53,14 @@ function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   let normB = 0;
   const len = Math.min(a.length, b.length);
   for (let i = 0; i < len; i += 1) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
+    // len <= a.length and len <= b.length by construction, so both reads
+    // are provably in-bounds; TypedArray indexing never yields `undefined`
+    // at runtime.
+    const ai = a[i] as number;
+    const bi = b[i] as number;
+    dot += ai * bi;
+    normA += ai * ai;
+    normB += bi * bi;
   }
   const denom = Math.sqrt(normA) * Math.sqrt(normB);
   return denom === 0 ? 0 : dot / denom;
@@ -142,7 +147,10 @@ export class SqliteMemoryStore implements MemoryStore {
     const scored = rows.map((row, i) => {
       const vec = Embedder.fromBytes(row.embedding);
       const cosine = cosineSimilarity(queryVec, vec);
-      const recency = maxAge > 0 ? 1 - ages[i] / maxAge : 1;
+      // ages is built via rows.map(...), so it has exactly rows.length
+      // entries and `i` (from this same rows.map) is always in range.
+      const age = ages[i] as number;
+      const recency = maxAge > 0 ? 1 - age / maxAge : 1;
       const importance = row.importance;
       const score =
         RECALL_WEIGHT_COSINE * cosine +
@@ -221,18 +229,26 @@ export class SqliteMemoryStore implements MemoryStore {
     const removed = new Set<string>();
 
     for (let i = 0; i < rows.length; i += 1) {
-      if (removed.has(rows[i].id)) continue;
+      const rowI = rows[i];
+      const vecI = vectors[i];
+      // vectors is rows.map(...), so it's always the same length as rows —
+      // this pair is unreachable-undefined, guarded rather than asserted.
+      if (rowI === undefined || vecI === undefined) continue;
+      if (removed.has(rowI.id)) continue;
       for (let j = i + 1; j < rows.length; j += 1) {
-        if (removed.has(rows[j].id)) continue;
-        const similarity = cosineSimilarity(vectors[i], vectors[j]);
+        const rowJ = rows[j];
+        const vecJ = vectors[j];
+        if (rowJ === undefined || vecJ === undefined) continue;
+        if (removed.has(rowJ.id)) continue;
+        const similarity = cosineSimilarity(vecI, vecJ);
         if (similarity < threshold) continue;
-        const impI = rows[i].importance;
-        const impJ = rows[j].importance;
+        const impI = rowI.importance;
+        const impJ = rowJ.importance;
         if (impJ > impI) {
-          removed.add(rows[i].id);
-          break; // rows[i] is gone; nothing left to compare it against
+          removed.add(rowI.id);
+          break; // rowI is gone; nothing left to compare it against
         }
-        removed.add(rows[j].id);
+        removed.add(rowJ.id);
       }
     }
 

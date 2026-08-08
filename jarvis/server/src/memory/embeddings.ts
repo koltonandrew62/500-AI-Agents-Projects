@@ -69,15 +69,18 @@ function hashEmbed(text: string, dim: number = EMBED_DIM): Float32Array {
   for (const word of words) {
     const rand = mulberry32(seedFromWord(word));
     for (let i = 0; i < dim; i += 1) {
-      vec[i] += nextGaussian(rand);
+      // vec is allocated with exactly `dim` elements and i < dim, so this
+      // index is provably in-bounds; TypedArray reads never return
+      // `undefined` at runtime regardless of what the type says here.
+      vec[i] = (vec[i] as number) + nextGaussian(rand);
     }
   }
   let normSq = 0;
-  for (let i = 0; i < dim; i += 1) normSq += vec[i] * vec[i];
+  for (let i = 0; i < dim; i += 1) normSq += (vec[i] as number) * (vec[i] as number);
   const norm = Math.sqrt(normSq);
   const out = new Float32Array(dim);
   if (norm > 0) {
-    for (let i = 0; i < dim; i += 1) out[i] = vec[i] / norm;
+    for (let i = 0; i < dim; i += 1) out[i] = (vec[i] as number) / norm;
   }
   return out;
 }
@@ -161,7 +164,10 @@ export class Embedder {
   /** Convenience wrapper for encoding a single string. */
   async encodeOne(text: string): Promise<Float32Array> {
     const [vec] = await this.encode([text]);
-    return vec;
+    // encode() pushes exactly one vector per input text, so a 1-element
+    // input always yields a 1-element output; this fallback is unreachable
+    // in practice but keeps the return type honest.
+    return vec ?? hashEmbed(text);
   }
 
   /** Serialize an embedding vector to raw float32 bytes for BLOB storage. */

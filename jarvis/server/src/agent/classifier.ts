@@ -177,7 +177,10 @@ export function classifyHeuristic(text: string): Classification {
     const conjoinRe = /\b(?:and|also|plus|as well as)\b\s+([a-z']+)/g;
     let match: RegExpExecArray | null;
     while ((match = conjoinRe.exec(norm)) !== null) {
-      if (ACTION_VERBS.has(match[1])) {
+      // The capture group is mandatory in conjoinRe, so it's always present
+      // on a match — guard rather than assert.
+      const verb = match[1];
+      if (verb !== undefined && ACTION_VERBS.has(verb)) {
         score += 2;
         reasons.push('conjoined second action');
         break;

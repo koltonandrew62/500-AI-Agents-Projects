@@ -297,9 +297,13 @@ const searchFilesTool: Tool = {
         const lines = text.split('\n');
         for (let i = 0; i < lines.length; i++) {
           if (matches.length >= maxResults) break;
-          if (lines[i].includes(query)) {
+          // i < lines.length by the loop bound, so this is always defined —
+          // hoisted into a const rather than asserted so the guard is visible.
+          const line = lines[i];
+          if (line === undefined) continue;
+          if (line.includes(query)) {
             const rel = path.relative(root, full);
-            matches.push(`${rel}:${i + 1}: ${lines[i].trim().slice(0, 200)}`);
+            matches.push(`${rel}:${i + 1}: ${line.trim().slice(0, 200)}`);
           }
         }
       }

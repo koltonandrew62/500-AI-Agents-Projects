@@ -49,12 +49,27 @@ function fail(summary: string): ToolResult {
   return { ok: false, output: '', summary };
 }
 
-function runFile(cmd: string[], timeoutMs: number): Promise<{ ok: boolean; stderr: string; error?: NodeJS.ErrnoException }> {
+type ExecFileError = import('node:child_process').ExecFileException;
+
+function runFile(cmd: string[], timeoutMs: number): Promise<{ ok: boolean; stderr: string; error?: ExecFileError }> {
   return new Promise((resolve) => {
-    const [program, ...rest] = cmd;
-    execFile(program, rest, { timeout: timeoutMs }, (error, _stdout, stderr) => {
-      resolve({ ok: !error, stderr: stderr ?? '', error: error as NodeJS.ErrnoException | undefined });
-    });
+    const program = cmd[0];
+    if (program === undefined) {
+      // Every PLATFORM_APPS/VOLUME_CMDS entry is a non-empty literal array,
+      // so this is unreachable today — guarded because `cmd` is a general
+      // `string[]` parameter and a future caller could pass one.
+      resolve({ ok: false, stderr: 'runFile called with an empty command' });
+      return;
+    }
+    const rest = cmd.slice(1);
+    execFile(
+      program,
+      rest,
+      { timeout: timeoutMs, encoding: 'utf8' as const },
+      (error: ExecFileError | null, _stdout: string, stderr: string) => {
+        resolve({ ok: !error, stderr: stderr ?? '', error: error ?? undefined });
+      },
+    );
   });
 }
 
@@ -86,9 +101,16 @@ async function cpuPercent(sampleMs = 100): Promise<number> {
 
   let idleDelta = 0;
   let totalDelta = 0;
-  for (let i = 0; i < start.length; i++) {
-    const s = start[i].times;
-    const e = end[i].times;
+  // `start`/`end` come from two separate os.cpus() calls; nothing types-level
+  // guarantees they're the same length (hot-plug CPUs, containerized limits),
+  // so bound the loop by the shorter of the two rather than asserting.
+  const coreCount = Math.min(start.length, end.length);
+  for (let i = 0; i < coreCount; i++) {
+    const startCore = start[i];
+    const endCore = end[i];
+    if (startCore === undefined || endCore === undefined) continue;
+    const s = startCore.times;
+    const e = endCore.times;
     const sIdle = s.idle;
     const eIdle = e.idle;
     const sTotal = s.user + s.nice + s.sys + s.idle + s.irq;
