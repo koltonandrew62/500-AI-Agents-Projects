@@ -1,0 +1,134 @@
+.shell {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  width: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--j-gap);
+  padding: var(--j-gap);
+}
+
+/* ---- header --------------------------------------------------------- */
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--j-gap);
+  flex-wrap: wrap;
+}
+
+.brandBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand {
+  font-size: var(--j-fs-xl);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--j-glow);
+  text-shadow: var(--j-text-glow);
+}
+
+.subtitle {
+  font-size: var(--j-fs-xs);
+  color: var(--j-text-dim);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.chips {
+  margin-top: 6px;
+}
+
+.headerRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* ---- main three-column grid ------------------------------------------ */
+
+.main {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.6fr) minmax(220px, 1fr);
+  gap: var(--j-gap);
+  min-height: 0;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--j-gap);
+  min-height: 0;
+}
+
+.colLeft > *:first-child { flex: 1; min-height: 0; }
+.colLeft > *:last-child { flex: 1.4; min-height: 0; }
+
+.core {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+}
+
+.coreSphereLayer {
+  position: absolute;
+  inset: 0;
+}
+
+.reticleLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+}
+
+.colRight > * {
+  flex: 1;
+  min-height: 0;
+}
+.colRight > *:nth-child(1) { flex: 1; }
+.colRight > *:nth-child(2) { flex: 0 0 90px; }
+.colRight > *:nth-child(3) { flex: 1.6; }
+
+/* ---- bottom row ------------------------------------------------------- */
+
+.bottom {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(320px, 2.4fr);
+  gap: var(--j-gap);
+  min-height: 190px;
+  max-height: 260px;
+}
+
+/* ---- responsive collapse ---------------------------------------------- */
+
+@media (max-width: 980px) {
+  .main {
+    grid-template-columns: 1fr;
+  }
+  .core {
+    min-height: 260px;
+    order: -1;
+  }
+  .bottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .header {
+    flex-direction: column;
+  }
+  .headerRight {
+    align-items: flex-start;
+  }
+}
