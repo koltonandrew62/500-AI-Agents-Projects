@@ -127,14 +127,29 @@ export function useJarvis(): JarvisState & { actions: JarvisActions } {
     };
   }, []);
 
-  // Drive the mic level -> store while listening, via a single rAF loop.
+  // Drive the mic level + downsampled waveform -> store while listening.
   useEffect(() => {
-    const tick = (): void => {
-      if (micMeter.isLive()) {
-        const level = micMeter.read(levelBuf.current);
-        store.setMicLevel(level);
-      } else if (store.getSnapshot().micLevel !== 0) {
-        store.setMicLevel(0);
+    const BARS = 24;
+    let lastTick = 0;
+    const tick = (now: number): void => {
+      // Throttle to ~20fps; the waveform doesn't need 60fps of store churn.
+      if (now - lastTick >= 50) {
+        lastTick = now;
+        if (micMeter.isLive()) {
+          const buf = levelBuf.current;
+          const level = micMeter.read(buf);
+          store.setMicLevel(level);
+          const step = Math.floor(buf.length / BARS) || 1;
+          const bars: number[] = [];
+          for (let i = 0; i < BARS; i += 1) {
+            const sample = buf[i * step] ?? 0;
+            bars.push(Math.min(1, Math.abs(sample) * 3));
+          }
+          store.setWaveform(bars);
+        } else if (store.getSnapshot().micLevel !== 0) {
+          store.setMicLevel(0);
+          store.setWaveform(new Array(BARS).fill(0));
+        }
       }
       rafRef.current = requestAnimationFrame(tick);
     };

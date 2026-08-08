@@ -1,0 +1,139 @@
+.body {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  transition: opacity 0.4s var(--j-ease, ease);
+}
+
+.limb {
+  fill: color-mix(in srgb, var(--j-blue, #1b8fe0) 7%, transparent);
+  stroke: var(--j-cyan, #4fd8ff);
+  stroke-width: 0.5;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--j-cyan, #4fd8ff) 45%, transparent));
+}
+
+.range {
+  fill: none;
+  stroke: var(--j-cyan-dim, #1c6f92);
+  stroke-width: 0.3;
+  stroke-dasharray: 1.4 2.2;
+  opacity: 0.6;
+}
+
+.cross {
+  stroke: var(--j-cyan-dim, #1c6f92);
+  stroke-width: 0.25;
+  opacity: 0.42;
+}
+
+.wire {
+  fill: none;
+  stroke: var(--j-cyan, #4fd8ff);
+  stroke-width: 0.32;
+  stroke-linecap: round;
+  opacity: 0.62;
+}
+
+.wireMajor {
+  fill: none;
+  stroke: var(--j-glow, #7ee8ff);
+  stroke-width: 0.5;
+  stroke-linecap: round;
+  opacity: 0.92;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--j-cyan, #4fd8ff) 70%, transparent));
+}
+
+.wireBack {
+  fill: none;
+  stroke: var(--j-cyan-dim, #1c6f92);
+  stroke-width: 0.25;
+  opacity: 0.3;
+}
+
+.sweepWedge {
+  fill: color-mix(in srgb, var(--j-cyan, #4fd8ff) 13%, transparent);
+  stroke: none;
+}
+
+.sweepEdge {
+  stroke: var(--j-glow, #7ee8ff);
+  stroke-width: 0.5;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--j-cyan, #4fd8ff) 85%, transparent));
+}
+
+/* NOTE: the group's `opacity` attribute is driven per-frame (front/back of the
+   globe), so the blink animation must live on the dot, not the group. */
+.contact {
+  --dot: var(--j-cyan, #4fd8ff);
+}
+
+.contactCyan {
+  --dot: var(--j-cyan, #4fd8ff);
+}
+.contactAmber {
+  --dot: var(--j-amber, #ffb545);
+}
+.contactRed {
+  --dot: var(--j-red, #ff4d5e);
+}
+
+.contactDot {
+  fill: var(--dot);
+  filter: drop-shadow(0 0 3px var(--dot));
+  animation: contactBlink 2.1s var(--j-ease, ease) infinite;
+  animation-delay: inherit;
+}
+
+.contactRing {
+  fill: none;
+  stroke: var(--dot);
+  stroke-width: 0.28;
+  opacity: 0.65;
+  transform-origin: center;
+  animation: contactPing 2.1s var(--j-ease, ease) infinite;
+}
+
+.contactTag {
+  fill: var(--dot);
+  font-family: var(--j-font-mono, 'Share Tech Mono', ui-monospace, monospace);
+  font-size: 2.4px;
+  letter-spacing: 0.3px;
+  opacity: 0.85;
+}
+
+@keyframes contactBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes contactPing {
+  0% {
+    r: 1.2;
+    opacity: 0.9;
+  }
+  70%,
+  100% {
+    r: 4.2;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contactDot,
+  .contactRing {
+    animation: none;
+  }
+}

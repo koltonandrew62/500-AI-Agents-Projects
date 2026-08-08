@@ -211,6 +211,10 @@ class Store {
     this.patch({ micLevel: level });
   }
 
+  setWaveform(bars: number[]): void {
+    this.patch({ waveform: bars });
+  }
+
   // -- toggles ----------------------------------------------------------
 
   setToggle(key: keyof JarvisToggles, value: boolean): void {
