@@ -172,8 +172,12 @@ function buildConfig(): Config {
     memoryDbPath,
     tasksDbPath,
 
+    // Most PaaS hosts (Render, Railway, Heroku, ...) inject PORT and expect
+    // the process to bind it; JARVIS_PORT remains an explicit override for
+    // anyone who wants one regardless of platform. Local default is
+    // unaffected -- neither var is set, so this still falls through to 8000.
     host: env('JARVIS_HOST') ?? '127.0.0.1',
-    port: envInt('JARVIS_PORT', 8000),
+    port: envInt('PORT', envInt('JARVIS_PORT', 8000)),
     corsOrigins: envList('JARVIS_CORS_ORIGINS', [
       'http://localhost:5173',
       'http://127.0.0.1:5173',

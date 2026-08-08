@@ -97,27 +97,62 @@ Everything is cyan-on-navy wireframe with corner-bracket panel frames, scanlines
 Sign up at **[openrouter.ai/keys](https://openrouter.ai/keys)** — the models this project
 defaults to are free.
 
-```bash
-cp .env.example .env
-# then set OPENROUTER_API_KEY in .env
-```
-
-### 2. Backend
+### 2. Run it
 
 ```bash
-cd backend
-./run.sh          # creates a venv, installs deps, starts uvicorn on :8000
+cd server
+cp .env.example .env   # then set OPENROUTER_API_KEY in .env
+npm install && npm run build && npm start
 ```
 
-### 3. Frontend
+Open **http://localhost:8000** — the server serves `jarvis.html` directly, so that one
+process is the whole app. Allow camera and microphone access, and say **"Jarvis."**
 
-```bash
-cd frontend
-npm install
-npm run dev       # opens on :5173, proxies /ws and /api to :8000
-```
+> `jarvis.html` also opens standalone with no server at all (double-click it, or drag it
+> into a browser) — the HUD renders and animates on simulated data, but chat/vision/memory
+> won't respond without the server behind it.
 
-Open the app, allow camera and microphone access, and say **"Jarvis"**.
+> The original Python/FastAPI + React/Vite implementation still lives in `backend/` and
+> `frontend/` as a reference — `server/` + `jarvis.html` (Node/TypeScript + one static file)
+> is the current, maintained stack.
+
+---
+
+## Deploy it for free
+
+Everything below is optional — running it locally per above is the zero-account path. This
+is for a real `https://` URL reachable from any device, at the cost of one thing only you
+can do: creating an account on a hosting platform. There's no version of this with zero
+action from you — every host ties a running service to *someone's* account, and it has to
+be yours, not something done on your behalf.
+
+**Render** (free web-service tier, no card, GitHub sign-in) is a good fit — it runs a real
+long-running Node process with WebSockets, unlike pure static/serverless hosts. One
+trade-off worth knowing going in: the free tier's disk is ephemeral, so the memory database
+(`memory.db`/`tasks.db`) resets on every restart or redeploy — it won't persist the way it
+does running on your own machine.
+
+A `render.yaml` blueprint is at the repo root as a starting point, but it's best-effort —
+unverified against Render's current schema. The manual path below relies only on stable,
+long-standing dashboard concepts and is the more reliable one:
+
+1. Sign up at [render.com](https://render.com) with **"Sign in with GitHub."**
+2. **New +** → **Web Service** → connect this repo, branch `claude/spiderman-jarvis-ai-ffdqot`.
+3. Set:
+   - **Root Directory:** `jarvis/server`
+   - **Runtime:** Node
+   - **Build Command:** `npm install && npm run build`
+   - **Start Command:** `npm start`
+4. **Environment** tab, add:
+   - `OPENROUTER_API_KEY` — your key from step 1 above
+   - `JARVIS_HOST` = `0.0.0.0` — required; the server defaults to loopback-only,
+     which is unreachable from Render's routing layer
+5. **Advanced** → Health Check Path: `/health` (optional, but lets Render detect a bad deploy)
+6. Create Web Service. First deploy takes a few minutes; the URL Render assigns is live once
+   it's done.
+
+The free tier spins down after ~15 minutes idle and takes 30–60s to wake on the next
+request — expected, not a bug.
 
 ---
 

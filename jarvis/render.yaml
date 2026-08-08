@@ -1,0 +1,31 @@
+# Render Blueprint for J.A.R.V.I.S.
+#
+# Best-effort: written from general knowledge of Render's blueprint format,
+# NOT verified against Render's current docs -- this session's network
+# policy blocks render.com, so it couldn't be checked. If "New Blueprint
+# Instance" rejects this file or a field looks unrecognized in Render's UI,
+# fall back to the manual "New Web Service" steps in jarvis/README.md's
+# Deploy section instead -- those rely only on long-standing dashboard
+# fields (Root Directory, Build Command, Start Command, Environment) rather
+# than this file's exact schema.
+#
+# The one thing you must do by hand either way: set OPENROUTER_API_KEY
+# (marked sync: false below, so Render prompts for it rather than storing a
+# real secret in this repo).
+
+services:
+  - type: web
+    name: jarvis-assistant
+    runtime: node
+    plan: free
+    rootDir: jarvis/server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      - key: JARVIS_HOST
+        value: 0.0.0.0
+      - key: OPENROUTER_API_KEY
+        sync: false
