@@ -13,6 +13,12 @@ export type { LLMProvider } from '../types.js';
 export { OpenRouterProvider } from './openrouter.js';
 export type { OpenRouterOptions } from './openrouter.js';
 
+// xAI (Grok) -- NOT part of ModelRouter's free-tier chains. A standalone
+// provider a caller opts into explicitly; see xai.ts for why it isn't
+// folded into the router's fallback-chain machinery.
+export { XaiProvider } from './xai.js';
+export type { XaiOptions } from './xai.js';
+
 export {
   ModelRouter,
   PLANNING_CHAIN,

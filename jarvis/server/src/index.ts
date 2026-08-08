@@ -180,6 +180,7 @@ async function main(): Promise<void> {
   app.get('/health', async (_req: Request, res: Response) => {
     res.json({
       llm: llmHealth(),
+      xai: xaiHealth(),
       db: await dbHealth(memoryStore),
       vision: subsystemHealth(visionPipeline, config.visionEnabled),
       voice: { status: config.voiceEnabled ? 'ok' : 'disabled', detail: 'voice runs client-side (browser SpeechRecognition/SpeechSynthesis)' },
@@ -287,6 +288,17 @@ async function main(): Promise<void> {
 function llmHealth(): { status: string; detail: string } {
   const configured = Boolean(config.openrouterApiKey);
   return { status: configured ? 'ok' : 'unconfigured', detail: configured ? '' : 'OPENROUTER_API_KEY not set' };
+}
+
+/**
+ * xAI (Grok) is optional and outside the free-tier chains, so "unconfigured"
+ * here is a normal, expected state -- not a degradation worth alarming over.
+ * Like llmHealth(), this is a key-presence check, not a live ping: a bad key
+ * only surfaces once something actually tries to call it.
+ */
+function xaiHealth(): { status: string; detail: string } {
+  const configured = Boolean(config.xaiApiKey);
+  return { status: configured ? 'ok' : 'unconfigured', detail: configured ? '' : 'XAI_API_KEY not set (optional)' };
 }
 
 async function dbHealth(memoryStore: MemoryStoreLike | null): Promise<{ status: string; detail: string }> {

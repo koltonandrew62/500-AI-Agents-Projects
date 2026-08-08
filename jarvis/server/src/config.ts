@@ -99,6 +99,16 @@ export interface Config {
   openrouterApiKey: string;
   openrouterBaseUrl: string;
 
+  /**
+   * xAI (Grok) API key — optional. Unlike OpenRouter this is NOT a free
+   * tier; calls are billed by xAI per token. Required at call time only, not
+   * at import time, matching the OpenRouter key's degrade-gracefully pattern.
+   */
+  xaiApiKey: string;
+  xaiBaseUrl: string;
+  xaiModel: string;
+  xaiVisionModel: string;
+
   models: ModelChains;
 
   workspaceRoot: string;
@@ -134,6 +144,14 @@ function buildConfig(): Config {
   return {
     openrouterApiKey: env('OPENROUTER_API_KEY') ?? '',
     openrouterBaseUrl: env('OPENROUTER_BASE_URL') ?? 'https://openrouter.ai/api/v1',
+
+    xaiApiKey: env('XAI_API_KEY') ?? '',
+    xaiBaseUrl: env('XAI_BASE_URL') ?? 'https://api.x.ai/v1',
+    // Model names current as of this integration -- xAI's lineup moves
+    // faster than this file gets revisited. Check https://docs.x.ai/docs/models
+    // if either default 404s, and override via env rather than editing here.
+    xaiModel: env('XAI_MODEL') ?? 'grok-4',
+    xaiVisionModel: env('XAI_VISION_MODEL') ?? 'grok-4',
 
     models: {
       planning: envList('JARVIS_PLANNING_MODELS', DEFAULT_PLANNING_MODELS),
