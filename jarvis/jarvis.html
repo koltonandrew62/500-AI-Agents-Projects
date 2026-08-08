@@ -1,0 +1,1939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<meta name="referrer" content="no-referrer" />
+<title>J.A.R.V.I.S. — HUD</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%234fd8ff' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%237ee8ff'/%3E%3C/svg%3E" />
+<style>
+/* =========================================================================
+   J.A.R.V.I.S. HUD — single-file client
+   -------------------------------------------------------------------------
+   §1  DESIGN TOKENS
+   §2  RESET + PAGE CHROME (grid / scanlines / vignette)
+   §3  PANEL SYSTEM (corner brackets — never plain borders)
+   §4  LAYOUT GRID
+   §5  HEADER / CLOCK / CHIPS
+   §6  VITALS / TELEMETRY / DIAGNOSTICS
+   §7  STAGE (particle core + reticle)
+   §8  RADAR / WAVEFORM / VISION
+   §9  COMMAND BAR + COMMS LOG
+   §10 RESPONSIVE + REDUCED MOTION
+   ========================================================================= */
+
+/* ---------------------------------------------------------------- §1 tokens */
+:root{
+  --j-bg:#030a1a; --j-bg-2:#05122b; --j-cyan:#4fd8ff; --j-cyan-dim:#1c6f92;
+  --j-blue:#1b8fe0; --j-glow:#7ee8ff; --j-amber:#ffb545; --j-red:#ff4d5e;
+  --j-grid:rgba(79,216,255,0.10); --j-text:#b8ecff; --j-text-dim:#4d7f9c;
+
+  --j-font: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --j-gap: 10px;
+  --j-panel-bg: linear-gradient(180deg, rgba(5,18,43,.82), rgba(3,10,26,.9));
+}
+
+/* ------------------------------------------------- §2 reset + page chrome */
+*,*::before,*::after{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  background:var(--j-bg);
+  color:var(--j-text);
+  font-family:var(--j-font);
+  font-size:13px;
+  line-height:1.35;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,textarea{ font:inherit; letter-spacing:inherit; text-transform:inherit; color:inherit; }
+button{ background:none; border:0; cursor:pointer; }
+::selection{ background:rgba(79,216,255,.28); color:#eafaff; }
+
+/* Layered backdrop: radial wash → animated grid → scanlines → vignette. */
+#bg{ position:fixed; inset:0; z-index:0; pointer-events:none; }
+#bg .wash{
+  position:absolute; inset:-10%;
+  background:
+    radial-gradient(60% 55% at 50% 42%, rgba(27,143,224,.16), transparent 70%),
+    radial-gradient(90% 70% at 50% 120%, rgba(79,216,255,.09), transparent 70%),
+    linear-gradient(180deg, var(--j-bg-2), var(--j-bg) 55%, #01060f);
+}
+#bg .grid{
+  position:absolute; inset:-60px;
+  background-image:
+    linear-gradient(to right, var(--j-grid) 0 1px, transparent 1px 100%),
+    linear-gradient(to bottom, var(--j-grid) 0 1px, transparent 1px 100%);
+  background-size:56px 56px, 56px 56px;
+  mask-image:radial-gradient(72% 68% at 50% 48%, #000 30%, transparent 92%);
+  -webkit-mask-image:radial-gradient(72% 68% at 50% 48%, #000 30%, transparent 92%);
+  animation:gridDrift 26s linear infinite;
+  opacity:.85;
+}
+@keyframes gridDrift{ to{ transform:translate3d(56px,56px,0); } }
+#bg .fine{
+  position:absolute; inset:0;
+  background-image:linear-gradient(to bottom, rgba(79,216,255,.05) 0 1px, transparent 1px 3px);
+  opacity:.55; mix-blend-mode:screen;
+}
+#bg .scan{
+  position:absolute; left:0; right:0; height:34vh;
+  background:linear-gradient(180deg, transparent, rgba(79,216,255,.055) 55%, transparent);
+  animation:scanFall 9s linear infinite;
+}
+@keyframes scanFall{ 0%{ transform:translateY(-40vh);} 100%{ transform:translateY(115vh);} }
+#bg .vig{
+  position:absolute; inset:0;
+  background:radial-gradient(78% 72% at 50% 48%, transparent 45%, rgba(0,0,0,.62) 88%, rgba(0,0,0,.86));
+}
+#bg .noise{
+  position:absolute; inset:0; opacity:.035; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ----------------------------------------------------- §3 panel system */
+.panel{
+  position:relative;
+  display:flex; flex-direction:column;
+  min-width:0; min-height:0;
+  padding:8px 10px 9px;
+  background:var(--j-panel-bg);
+  isolation:isolate;
+}
+.panel::before{ /* faint masked hairline; brackets do the real framing */
+  content:''; position:absolute; inset:0; pointer-events:none;
+  border:1px solid rgba(28,111,146,.42);
+  mask-image:linear-gradient(180deg,#000 0 16%,transparent 32% 68%,#000 84% 100%);
+  -webkit-mask-image:linear-gradient(180deg,#000 0 16%,transparent 32% 68%,#000 84% 100%);
+}
+.panel::after{ /* internal grid wash */
+  content:''; position:absolute; inset:1px; pointer-events:none; z-index:-1;
+  background-image:linear-gradient(to bottom, var(--j-grid) 0 1px, transparent 1px 4px);
+  opacity:.5;
+}
+.cb{ position:absolute; width:13px; height:13px; pointer-events:none; border-color:var(--j-cyan);
+     filter:drop-shadow(0 0 4px rgba(79,216,255,.6)); z-index:3; }
+.cb.tl{ top:-1px; left:-1px; border-top:2px solid; border-left:2px solid; }
+.cb.tr{ top:-1px; right:-1px; border-top:2px solid; border-right:2px solid; }
+.cb.bl{ bottom:-1px; left:-1px; border-bottom:2px solid; border-left:2px solid; }
+.cb.br{ bottom:-1px; right:-1px; border-bottom:2px solid; border-right:2px solid; }
+
+.panel[data-tone="amber"] .cb{ border-color:var(--j-amber); filter:drop-shadow(0 0 4px rgba(255,181,69,.6)); }
+.panel[data-tone="red"]   .cb{ border-color:var(--j-red);   filter:drop-shadow(0 0 5px rgba(255,77,94,.65)); }
+.panel[data-tone="dim"]   .cb{ border-color:var(--j-cyan-dim); filter:none; }
+.panel[data-tone="amber"] .p-title{ color:var(--j-amber); text-shadow:0 0 8px rgba(255,181,69,.55); }
+.panel[data-tone="red"]   .p-title{ color:var(--j-red);   text-shadow:0 0 8px rgba(255,77,94,.55); }
+.panel[data-tone="dim"]   .p-title{ color:var(--j-text-dim); text-shadow:none; }
+
+.p-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:7px; flex:0 0 auto; }
+.p-title{ font-size:9.5px; font-weight:700; letter-spacing:.2em; color:var(--j-glow);
+          text-shadow:0 0 8px rgba(79,216,255,.7); white-space:nowrap; }
+.p-rule{ flex:1 1 auto; height:1px; background:linear-gradient(90deg, rgba(79,216,255,.6), transparent); }
+.p-status{ font-size:8.5px; color:var(--j-text-dim); white-space:nowrap; }
+.p-body{ position:relative; flex:1 1 auto; min-width:0; min-height:0; }
+
+/* Panel sweep highlight */
+.sweep{ position:absolute; inset:1px; overflow:hidden; pointer-events:none; z-index:2; }
+.sweep::before{
+  content:''; position:absolute; left:0; right:0; height:26%;
+  background:linear-gradient(180deg, transparent, rgba(79,216,255,.085), transparent);
+  animation:panelSweep 7.5s linear infinite;
+}
+@keyframes panelSweep{ 0%{ transform:translateY(-130%);} 100%{ transform:translateY(470%);} }
+
+/* ------------------------------------------------------ §4 layout grid */
+#hud{
+  position:relative; z-index:1;
+  height:100%; width:100%;
+  padding:10px 12px 12px;
+  display:grid;
+  grid-template-columns: minmax(230px, 290px) minmax(0,1fr) minmax(240px, 310px);
+  grid-template-rows: auto minmax(0,1fr) auto;
+  grid-template-areas:
+    "head head head"
+    "left stage right"
+    "left cmd   right";
+  gap:var(--j-gap);
+  overflow:hidden;
+}
+#head{ grid-area:head; }
+#colL{ grid-area:left; display:grid; grid-template-rows: auto minmax(0,1fr) auto; gap:var(--j-gap); min-height:0; }
+#stage{ grid-area:stage; min-height:0; }
+#colR{ grid-area:right; display:grid; grid-template-rows: minmax(0,1.15fr) auto minmax(0,1.1fr) minmax(0,1fr); gap:var(--j-gap); min-height:0; }
+#cmdWrap{ grid-area:cmd; min-height:0; }
+
+/* ------------------------------------------- §5 header / clock / chips */
+#head{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.brand-wrap{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+.brand{ display:flex; align-items:baseline; gap:10px; }
+.brand h1{
+  margin:0; font-size:22px; font-weight:700; letter-spacing:.42em;
+  color:#dff6ff;
+  text-shadow:0 0 10px rgba(79,216,255,.85), 0 0 34px rgba(27,143,224,.5), 2px 0 0 rgba(255,77,94,.16), -2px 0 0 rgba(79,216,255,.2);
+}
+.brand .mk{ font-size:8.5px; color:var(--j-cyan-dim); }
+.subtitle{ font-size:8.5px; color:var(--j-text-dim); }
+.subtitle b{ color:var(--j-cyan); font-weight:400; }
+
+#chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.chip{
+  position:relative; display:inline-flex; align-items:center; gap:6px;
+  padding:4px 9px 4px 8px; font-size:8.5px; letter-spacing:.16em;
+  color:var(--j-text-dim);
+  background:linear-gradient(180deg, rgba(28,111,146,.12), rgba(3,10,26,.5));
+  border:1px solid rgba(28,111,146,.45);
+  clip-path:polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition:color .2s, border-color .2s, background .2s;
+}
+.chip .dot{ width:6px; height:6px; border-radius:50%; background:var(--j-cyan-dim); box-shadow:0 0 0 rgba(0,0,0,0); }
+.chip[data-on="1"]{ color:var(--j-glow); border-color:rgba(79,216,255,.7);
+  background:linear-gradient(180deg, rgba(79,216,255,.16), rgba(3,10,26,.5)); }
+.chip[data-on="1"] .dot{ background:var(--j-cyan); animation:dotPulse 1.6s ease-in-out infinite; }
+.chip[data-on="err"]{ color:var(--j-red); border-color:rgba(255,77,94,.65); }
+.chip[data-on="err"] .dot{ background:var(--j-red); animation:dotPulse .9s ease-in-out infinite; }
+.chip[data-on="warn"]{ color:var(--j-amber); border-color:rgba(255,181,69,.6); }
+.chip[data-on="warn"] .dot{ background:var(--j-amber); animation:dotPulse 1.2s ease-in-out infinite; }
+.chip:hover{ border-color:rgba(126,232,255,.9); }
+@keyframes dotPulse{ 0%,100%{ box-shadow:0 0 0 0 currentColor; opacity:1; } 50%{ box-shadow:0 0 9px 2px currentColor; opacity:.62; } }
+
+.head-right{ display:flex; flex-direction:column; align-items:flex-end; gap:5px; text-align:right; }
+#clockMain{ font-size:30px; font-weight:700; letter-spacing:.14em; line-height:1;
+  color:#e6fbff; text-shadow:0 0 12px rgba(79,216,255,.8), 0 0 30px rgba(27,143,224,.45); }
+#clockMain .cc{ font-size:15px; color:var(--j-cyan); text-shadow:0 0 8px rgba(79,216,255,.8); }
+#clockDate{ font-size:9px; color:var(--j-text-dim); }
+#geo{ font-size:8.5px; color:var(--j-cyan-dim); display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+#geo span b{ color:var(--j-text); font-weight:400; }
+
+/* -------------------------------- §6 vitals / telemetry / diagnostics */
+.vital{ display:grid; grid-template-columns:34px 1fr 42px; align-items:center; gap:7px; margin:0 0 6px; }
+.vital:last-child{ margin-bottom:0; }
+.vital .vl{ font-size:8.5px; color:var(--j-text-dim); }
+.vital .vv{ font-size:9px; text-align:right; color:var(--j-glow); font-variant-numeric:tabular-nums; }
+.bar{ position:relative; height:8px; background:rgba(28,111,146,.16); overflow:hidden;
+  border-left:1px solid rgba(79,216,255,.35); border-right:1px solid rgba(79,216,255,.18); }
+.bar .fill{ position:absolute; inset:0 auto 0 0; width:0%;
+  background:linear-gradient(90deg, rgba(27,143,224,.75), var(--j-cyan));
+  box-shadow:0 0 10px rgba(79,216,255,.55); transition:width .28s ease-out, background .3s; }
+.bar .ticks{ position:absolute; inset:0; pointer-events:none;
+  background-image:linear-gradient(to right, rgba(3,10,26,.85) 0 1px, transparent 1px 6px); opacity:.75; }
+.vital[data-lv="warn"] .fill{ background:linear-gradient(90deg, rgba(255,181,69,.55), var(--j-amber)); box-shadow:0 0 10px rgba(255,181,69,.55); }
+.vital[data-lv="warn"] .vv{ color:var(--j-amber); }
+.vital[data-lv="crit"] .fill{ background:linear-gradient(90deg, rgba(255,77,94,.55), var(--j-red)); box-shadow:0 0 12px rgba(255,77,94,.6); animation:critFlash 1.1s steps(2) infinite; }
+.vital[data-lv="crit"] .vv{ color:var(--j-red); }
+@keyframes critFlash{ 50%{ opacity:.6; } }
+
+#telemetry{ position:absolute; inset:0; overflow:hidden; display:flex; flex-direction:column; gap:2px;
+  mask-image:linear-gradient(180deg,#000 0 82%,transparent 100%);
+  -webkit-mask-image:linear-gradient(180deg,#000 0 82%,transparent 100%); }
+.trow{ display:grid; grid-template-columns:46px 30px 1fr; gap:6px; font-size:8.5px; align-items:baseline;
+  animation:rowIn .45s ease-out both; }
+@keyframes rowIn{ from{ opacity:0; transform:translateX(-8px);} to{ opacity:1; transform:none; } }
+.trow .tt{ color:var(--j-cyan-dim); font-variant-numeric:tabular-nums; }
+.trow .tg{ font-weight:700; }
+.trow .tx{ color:var(--j-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lv-debug .tg,.lv-debug .tx{ color:var(--j-text-dim); }
+.lv-info  .tg{ color:var(--j-cyan); }
+.lv-ok    .tg{ color:#5fffc4; } .lv-ok .tx{ color:#a9f5dd; }
+.lv-warn  .tg,.lv-warn .tx{ color:var(--j-amber); }
+.lv-error .tg,.lv-error .tx{ color:var(--j-red); }
+
+#diag{ display:grid; grid-template-columns:1fr 1fr; gap:2px 10px; font-size:8.5px; }
+.dk{ color:var(--j-text-dim); display:flex; justify-content:space-between; gap:6px; }
+.dk b{ color:var(--j-glow); font-weight:400; font-variant-numeric:tabular-nums; }
+.flick{ animation:flick 4.7s steps(1) infinite; }
+@keyframes flick{ 0%,96%,100%{ opacity:1; } 97%{ opacity:.35; } 98.5%{ opacity:.75; } }
+
+/* --------------------------------------------------------- §7 stage */
+#stage{ position:relative; display:grid; place-items:center; overflow:hidden; }
+#stageInner{ position:relative; width:min(100%, 100cqmin); aspect-ratio:1/1;
+  max-height:100%; max-width:100%; display:grid; place-items:center; }
+#coreCanvas,#reticleCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+#coreCanvas{ z-index:1; }
+#reticleCanvas{ z-index:2; }
+#stateLabel{
+  position:absolute; z-index:3; bottom:2%; left:50%; transform:translateX(-50%);
+  font-size:9px; letter-spacing:.34em; color:var(--j-glow);
+  text-shadow:0 0 10px rgba(79,216,255,.8); white-space:nowrap;
+}
+#stateLabel::before,#stateLabel::after{ content:'//'; color:var(--j-cyan-dim); margin:0 8px; }
+#stageTag{ position:absolute; z-index:3; top:2%; left:50%; transform:translateX(-50%);
+  font-size:8px; letter-spacing:.3em; color:var(--j-cyan-dim); white-space:nowrap; }
+
+/* --------------------------------- §8 radar / waveform / vision feed */
+#radarWrap,#visionWrap{ position:absolute; inset:0; }
+#radarCanvas,#waveCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+#wavePanel .p-body{ height:60px; }
+
+#visionWrap{ display:grid; place-items:center; overflow:hidden; background:rgba(1,6,15,.6); }
+#vidEl{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.82;
+  filter:saturate(.55) contrast(1.08) brightness(.92); transform:scaleX(-1); }
+#visionOverlay{ position:absolute; inset:0; width:100%; height:100%; }
+#visionMsg{ position:relative; z-index:2; font-size:8.5px; color:var(--j-text-dim); text-align:center;
+  padding:0 10px; line-height:1.7; }
+#visionMsg.err{ color:var(--j-red); }
+#visionReadout{ position:absolute; z-index:3; left:0; right:0; bottom:0; padding:4px 6px;
+  font-size:8px; color:var(--j-glow); background:linear-gradient(180deg, transparent, rgba(1,6,15,.9));
+  display:flex; gap:10px; justify-content:space-between; }
+#visionReadout .ocr{ color:var(--j-text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%; }
+#visionScan{ position:absolute; z-index:2; left:0; right:0; height:14%; display:none;
+  background:linear-gradient(180deg, transparent, rgba(79,216,255,.3), transparent);
+  box-shadow:0 0 18px rgba(79,216,255,.45); animation:visScan 1.9s linear infinite; }
+#visionWrap[data-scanning="1"] #visionScan{ display:block; }
+@keyframes visScan{ 0%{ transform:translateY(-20%);} 100%{ transform:translateY(720%);} }
+
+/* --------------------------------------- §9 command bar + comms log */
+#cmdWrap .p-body{ display:flex; flex-direction:column; gap:7px; }
+#comms{ flex:1 1 auto; min-height:0; max-height:26vh; overflow-y:auto; overflow-x:hidden;
+  display:flex; flex-direction:column; gap:5px; padding-right:4px; scrollbar-width:thin;
+  scrollbar-color:rgba(79,216,255,.45) transparent; }
+#comms::-webkit-scrollbar{ width:5px; }
+#comms::-webkit-scrollbar-thumb{ background:rgba(79,216,255,.4); }
+.msg{ display:grid; grid-template-columns:58px 1fr; gap:8px; font-size:9.5px; animation:rowIn .4s ease-out both; }
+.msg .who{ font-size:8px; letter-spacing:.16em; color:var(--j-cyan-dim); padding-top:1px; }
+.msg .body{ color:var(--j-text); text-transform:none; letter-spacing:.05em; line-height:1.5; word-break:break-word; }
+.msg.user .who{ color:var(--j-amber); }
+.msg.user .body{ color:#ffe0b4; }
+.msg.sys .who,.msg.sys .body{ color:var(--j-text-dim); font-size:8.5px; }
+.msg.err .who,.msg.err .body{ color:var(--j-red); }
+.msg .body .caretRun{ display:inline-block; width:7px; height:11px; margin-left:2px;
+  background:var(--j-cyan); box-shadow:0 0 8px var(--j-cyan); animation:blink 1s steps(2) infinite;
+  vertical-align:-1px; }
+@keyframes blink{ 50%{ opacity:0; } }
+
+#transcript{ font-size:8.5px; color:var(--j-cyan-dim); min-height:12px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#transcript b{ color:var(--j-glow); font-weight:400; }
+
+#cmdRow{ display:flex; align-items:center; gap:8px; flex:0 0 auto;
+  border:1px solid rgba(79,216,255,.32); background:rgba(3,10,26,.72); padding:5px 8px;
+  clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px); }
+#cmdRow:focus-within{ border-color:rgba(126,232,255,.85); box-shadow:0 0 18px rgba(79,216,255,.16) inset; }
+#prompt{ color:var(--j-cyan); font-size:11px; text-shadow:0 0 8px rgba(79,216,255,.8); }
+#input{ flex:1 1 auto; min-width:0; background:none; border:0; outline:none; font-size:11px;
+  letter-spacing:.1em; text-transform:none; color:#dff6ff; caret-color:transparent; }
+#input::placeholder{ color:var(--j-text-dim); text-transform:uppercase; letter-spacing:.14em; font-size:9px; }
+#caret{ width:8px; height:14px; background:var(--j-cyan); box-shadow:0 0 10px var(--j-cyan);
+  animation:blink 1.05s steps(2) infinite; flex:0 0 auto; }
+#cmdRow[data-typing="1"] #caret{ animation:none; }
+.iconBtn{ flex:0 0 auto; width:26px; height:22px; display:grid; place-items:center;
+  border:1px solid rgba(28,111,146,.5); color:var(--j-text-dim); font-size:9px; transition:.18s; }
+.iconBtn:hover{ border-color:rgba(126,232,255,.9); color:var(--j-glow); }
+.iconBtn[data-on="1"]{ color:var(--j-glow); border-color:rgba(79,216,255,.8);
+  background:rgba(79,216,255,.14); box-shadow:0 0 12px rgba(79,216,255,.25); }
+#miniWave{ flex:0 0 auto; width:76px; height:20px; display:block; }
+
+/* --------------------------------- §10 responsive + reduced motion */
+@media (max-width:1180px){
+  #hud{ grid-template-columns: minmax(0,1fr) minmax(200px,270px);
+        grid-template-rows:auto minmax(0,1fr) auto auto;
+        grid-template-areas:"head head" "stage right" "left right" "cmd cmd"; }
+  #colL{ grid-template-rows:auto auto auto; }
+}
+@media (max-width:860px){
+  body{ overflow:auto; }
+  #hud{ height:auto; min-height:100%; grid-template-columns:minmax(0,1fr);
+        grid-template-rows:none;
+        grid-template-areas:"head" "stage" "right" "left" "cmd"; }
+  #colL,#colR{ grid-template-rows:none; }
+  #stage{ min-height:56vw; }
+  #stageInner{ width:min(94vw, 480px); }
+  .brand h1{ font-size:17px; letter-spacing:.3em; }
+  #clockMain{ font-size:22px; }
+  #head{ justify-content:flex-start; }
+  .head-right{ align-items:flex-start; text-align:left; }
+  #geo{ justify-content:flex-start; }
+  #comms{ max-height:34vh; }
+}
+@media (prefers-reduced-motion: reduce){
+  #bg .grid,#bg .scan,.sweep::before,#visionScan,.chip .dot,#caret,.msg .body .caretRun,
+  .vital[data-lv="crit"] .fill,.flick{ animation:none !important; }
+  .trow,.msg{ animation-duration:.01s !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="bg" aria-hidden="true">
+  <div class="wash"></div><div class="grid"></div><div class="fine"></div>
+  <div class="scan"></div><div class="noise"></div><div class="vig"></div>
+</div>
+
+<main id="hud">
+
+  <!-- ================================================= HEADER ============ -->
+  <header id="head">
+    <div class="brand-wrap">
+      <div class="brand">
+        <h1>J.A.R.V.I.S.</h1>
+        <span class="mk">MK VII</span>
+      </div>
+      <div class="subtitle">JUST A RATHER VERY INTELLIGENT SYSTEM &nbsp;·&nbsp; LINK <b id="linkState">INIT</b> &nbsp;·&nbsp; BUILD <b>3.0.1</b></div>
+      <div id="chips"></div>
+    </div>
+    <div class="head-right">
+      <div id="clockMain">--:--:--<span class="cc">.--</span></div>
+      <div id="clockDate">—</div>
+      <div id="geo">
+        <span>LAT <b id="geoLat">--.----</b></span>
+        <span>LON <b id="geoLon">--.----</b></span>
+        <span>ALT <b id="geoAlt">---- M</b></span>
+        <span>GRID <b id="geoGrid">------</b></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================================== LEFT COLUMN ========== -->
+  <section id="colL">
+    <div class="panel" id="vitalsPanel">
+      <div class="p-head"><span class="p-title">SYSTEM VITALS</span><span class="p-rule"></span><span class="p-status" id="vitalsStatus">NOMINAL</span></div>
+      <div class="p-body" id="vitals"></div>
+      <div class="sweep"></div>
+    </div>
+
+    <div class="panel" id="telemetryPanel">
+      <div class="p-head"><span class="p-title">TELEMETRY</span><span class="p-rule"></span><span class="p-status" id="telStatus">0 EVT</span></div>
+      <div class="p-body"><div id="telemetry"></div></div>
+    </div>
+
+    <div class="panel" id="diagPanel">
+      <div class="p-head"><span class="p-title">DIAGNOSTICS</span><span class="p-rule"></span><span class="p-status flick">SELF-TEST OK</span></div>
+      <div class="p-body"><div id="diag"></div></div>
+    </div>
+  </section>
+
+  <!-- ============================================== CENTER STAGE ========= -->
+  <section id="stage">
+    <div id="stageInner">
+      <canvas id="coreCanvas"></canvas>
+      <canvas id="reticleCanvas"></canvas>
+      <div id="stageTag">ARC REACTOR CORE · PARTICLE LATTICE</div>
+      <div id="stateLabel">STANDBY</div>
+    </div>
+  </section>
+
+  <!-- ============================================== RIGHT COLUMN ========= -->
+  <section id="colR">
+    <div class="panel" id="radarPanel">
+      <div class="p-head"><span class="p-title">RADAR / GLOBE</span><span class="p-rule"></span><span class="p-status" id="radarStatus">0 CONTACTS</span></div>
+      <div class="p-body"><div id="radarWrap"><canvas id="radarCanvas"></canvas></div></div>
+    </div>
+
+    <div class="panel" id="wavePanel">
+      <div class="p-head"><span class="p-title">AUDIO SPECTRUM</span><span class="p-rule"></span><span class="p-status" id="waveStatus">MUTED</span></div>
+      <div class="p-body"><canvas id="waveCanvas"></canvas></div>
+    </div>
+
+    <div class="panel" id="visionPanel">
+      <div class="p-head"><span class="p-title">VISION FEED</span><span class="p-rule"></span><span class="p-status" id="visionStatus">OFFLINE</span></div>
+      <div class="p-body">
+        <div id="visionWrap">
+          <video id="vidEl" playsinline muted autoplay hidden></video>
+          <canvas id="visionOverlay"></canvas>
+          <div id="visionScan"></div>
+          <div id="visionMsg">OPTICAL SENSOR OFFLINE<br>ENGAGE <b>VISION</b> CHIP TO ENABLE</div>
+          <div id="visionReadout" hidden>
+            <span>FACES <b id="vFaces">0</b> · OBJ <b id="vObjs">0</b></span>
+            <span class="ocr" id="vOcr">OCR —</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="scenePanel">
+      <div class="p-head"><span class="p-title">SCENE ANALYSIS</span><span class="p-rule"></span><span class="p-status" id="sceneStatus">IDLE</span></div>
+      <div class="p-body"><div id="sceneText" style="font-size:8.5px;color:var(--j-text-dim);text-transform:none;letter-spacing:.05em;line-height:1.6;">Awaiting optical input. Scene semantics resolve server-side once a frame is transmitted.</div></div>
+    </div>
+  </section>
+
+  <!-- ============================================== COMMAND BAR ========== -->
+  <section id="cmdWrap">
+    <div class="panel" id="cmdPanel">
+      <div class="p-head"><span class="p-title">COMMAND BAR</span><span class="p-rule"></span><span class="p-status" id="cmdStatus">READY</span></div>
+      <div class="p-body">
+        <div id="comms" aria-live="polite"></div>
+        <div id="transcript">VOICE INTERFACE STANDBY — SAY <b>“JARVIS”</b> TO WAKE</div>
+        <div id="cmdRow">
+          <span id="prompt">&gt;</span>
+          <input id="input" type="text" autocomplete="off" spellcheck="false" placeholder="ENTER DIRECTIVE" aria-label="Command input" />
+          <span id="caret" aria-hidden="true"></span>
+          <canvas id="miniWave" aria-hidden="true"></canvas>
+          <button class="iconBtn" id="micBtn" title="Toggle microphone" aria-label="Toggle microphone">MIC</button>
+          <button class="iconBtn" id="sendBtn" title="Transmit" aria-label="Transmit">&gt;&gt;</button>
+        </div>
+      </div>
+      <div class="sweep"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+"use strict";
+/* =========================================================================
+   J.A.R.V.I.S. HUD CLIENT
+   -------------------------------------------------------------------------
+   §A  UTILITIES
+   §B  STATE
+   §C  RENDER LOOP
+   §D  PARTICLE CORE (Canvas 2D, real 3D projection)
+   §E  ORBITAL RETICLE
+   §F  RADAR / GLOBE
+   §G  WAVEFORM
+   §H  VITALS
+   §I  TELEMETRY LOG
+   §J  CLOCK + GEO
+   §K  DIAGNOSTICS
+   §L  STATUS CHIPS
+   §M  VISION (webcam, FaceDetector, frame transmit)
+   §N  AUDIO (mic metering)
+   §O  SPEECH RECOGNITION (wake word)
+   §P  SPEECH SYNTHESIS
+   §Q  WEBSOCKET TRANSPORT
+   §R  SIMULATION (standalone mode)
+   §S  COMMAND BAR / COMMS
+   §T  BOOT
+   ========================================================================= */
+
+/* ------------------------------------------------------------- §A utils */
+const $  = (id) => document.getElementById(id);
+const clamp = (v, lo = 0, hi = 1) => (v < lo ? lo : v > hi ? hi : v);
+const lerp  = (a, b, t) => a + (b - a) * t;
+/** Frame-rate independent exponential approach. */
+const approach = (cur, target, rate, dt) => cur + (target - cur) * (1 - Math.exp(-rate * dt));
+const rnd  = (a, b) => a + Math.random() * (b - a);
+const pad  = (n, w = 2) => String(Math.floor(n)).padStart(w, "0");
+const nowS = () => performance.now() / 1000;
+const uid  = () => "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const REDUCED = (() => {
+  try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
+})();
+/** Wrap any browser-API touch so a missing/blocked API never throws. */
+function guard(fn, fallback) {
+  try { return fn(); } catch (e) { return fallback; }
+}
+
+/** Sets a canvas backing store to its CSS size × DPR. Returns [w,h,dpr]. */
+function fitCanvas(cv, maxDpr = 2) {
+  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
+  const w = Math.max(1, Math.round(r.width  * dpr));
+  const h = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  return [w, h, dpr];
+}
+
+/* ------------------------------------------------------------- §B state */
+const S = {
+  /** 'idle' | 'listening' | 'thinking' | 'speaking' | 'error' */
+  mode: "idle",
+  connected: false,
+  simulated: true,
+  intensity: 0,        // 0..1 smoothed agitation (voice amplitude / churn)
+  micLevel: 0,         // 0..1 raw mic RMS
+  spectrum: new Float32Array(48),
+  telemetry: { cpu: 12, mem: 38, disk: 54, net_up: 0, net_down: 0, battery: 92, uptime_s: 0, processes: 214, temp_c: 41 },
+  vision:    { faces: 0, objects: [], text: "", scene: "", width: 0, height: 0 },
+  toggles:   { vision: false, memory: true, voice: false },
+  events: 0,
+  turnId: null,
+  streamEl: null,
+  contacts: [],
+  latency: 0,
+  frames: 0, fps: 60,
+};
+
+const STATE_SPIN = { idle: 0.10, listening: 0.22, thinking: 0.48, speaking: 0.30, error: 0.16 };
+const STATE_RETICLE = { idle: 6, listening: 13, thinking: 30, speaking: 18, error: 9 };
+const STATE_COLOR = {
+  idle:      { edge: [28,111,146],  core: [126,232,255] },
+  listening: { edge: [79,216,255],  core: [190,246,255] },
+  thinking:  { edge: [27,143,224],  core: [126,232,255] },
+  speaking:  { edge: [79,216,255],  core: [255,255,255] },
+  error:     { edge: [255,77,94],   core: [255,181,69]  },
+};
+
+function setMode(m) {
+  if (S.mode === m) return;
+  S.mode = m;
+  const el = $("stateLabel");
+  el.textContent = ({
+    idle: "STANDBY", listening: "LISTENING", thinking: "PROCESSING",
+    speaking: "TRANSMITTING", error: "FAULT",
+  })[m] || "STANDBY";
+  el.style.color = m === "error" ? "var(--j-red)" : "var(--j-glow)";
+  $("cmdStatus").textContent = m.toUpperCase();
+}
+
+/* -------------------------------------------------------- §C render loop */
+const LOOP = { subs: [], raf: 0, last: 0, running: false, acc: 0, frames: 0 };
+function onFrame(fn) { LOOP.subs.push(fn); }
+function loopTick(ts) {
+  LOOP.raf = requestAnimationFrame(loopTick);
+  const t = ts / 1000;
+  let dt = LOOP.last ? t - LOOP.last : 0.016;
+  LOOP.last = t;
+  if (dt > 0.1) dt = 0.1;                 // tab-switch / stall guard
+  if (REDUCED) dt = Math.min(dt, 0.033);
+
+  // Intensity: mic level while listening, synthetic churn while thinking.
+  let target = S.micLevel;
+  if (S.mode === "thinking") target = Math.max(target, 0.42 + Math.sin(t * 3.1) * 0.18);
+  else if (S.mode === "speaking") target = Math.max(target, 0.3 + Math.sin(t * 7.3) * 0.16);
+  S.intensity = approach(S.intensity, clamp(target), 6, dt);
+
+  for (let i = 0; i < LOOP.subs.length; i++) {
+    try { LOOP.subs[i](dt, t); } catch (e) { /* one bad module must not kill the HUD */ }
+  }
+
+  LOOP.frames++; LOOP.acc += dt;
+  if (LOOP.acc >= 1) { S.fps = Math.round(LOOP.frames / LOOP.acc); LOOP.frames = 0; LOOP.acc = 0; }
+}
+function startLoop() { if (!LOOP.running) { LOOP.running = true; LOOP.last = 0; LOOP.raf = requestAnimationFrame(loopTick); } }
+function stopLoop()  { if (LOOP.running) { LOOP.running = false; cancelAnimationFrame(LOOP.raf); } }
+document.addEventListener("visibilitychange", () => { document.hidden ? stopLoop() : startLoop(); });
+window.addEventListener("pagehide", stopLoop);
+
+/* ============================================================ §D CORE ====
+   ~3400 points on a Fibonacci sphere. Every frame:
+     1. per-particle noise displacement (2 octaves of a cheap sin lattice)
+     2. rotate about Y then X (real 3x3 rotation, written out inline)
+     3. perspective divide
+     4. bucket-sort by depth into 40 bins, paint back-to-front
+   Binning doubles as colour quantisation: one fillStyle per bin instead of
+   3400, which is what makes 60fps possible in Canvas 2D.
+   ======================================================================= */
+const CORE = (() => {
+  const COUNT = REDUCED ? 1600 : 3400;
+  const BINS = 40;
+  const cv = $("coreCanvas");
+  const ctx = guard(() => cv.getContext("2d", { alpha: true }), null);
+
+  // Fibonacci sphere + deterministic per-particle seed.
+  const px = new Float32Array(COUNT), py = new Float32Array(COUNT), pz = new Float32Array(COUNT);
+  const seed = new Float32Array(COUNT);
+  (function build() {
+    const ga = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < COUNT; i++) {
+      const y = 1 - (i / Math.max(COUNT - 1, 1)) * 2;
+      const r = Math.sqrt(Math.max(1 - y * y, 0));
+      const th = ga * i;
+      px[i] = Math.cos(th) * r; py[i] = y; pz[i] = Math.sin(th) * r;
+      let s = (Math.sin(i * 127.1) * 43758.5453) % 1; if (s < 0) s += 1;
+      seed[i] = s;
+    }
+  })();
+
+  // Scratch buffers reused every frame — zero allocation in the hot path.
+  const sx = new Float32Array(COUNT), sy = new Float32Array(COUNT), ss = new Float32Array(COUNT);
+  const binHead = new Int32Array(BINS);
+  const binCount = new Int32Array(BINS);
+  const order = new Int32Array(COUNT);
+  const binOf = new Int32Array(COUNT);
+
+  let rotY = 0, rotX = -0.28, W = 1, H = 1, DPR = 1;
+
+  function draw(dt, t) {
+    if (!ctx) return;
+    [W, H, DPR] = fitCanvas(cv);
+    ctx.clearRect(0, 0, W, H);
+
+    const inten = S.intensity;
+    const spin = STATE_SPIN[S.mode] || 0.1;
+    rotY += dt * (spin + inten * 0.9) * (REDUCED ? 0.3 : 1);
+    rotX = approach(rotX, -0.28 + Math.sin(t * 0.21) * 0.16, 1.2, dt);
+
+    const cy = Math.cos(rotY), sy0 = Math.sin(rotY);
+    const cx = Math.cos(rotX), sx0 = Math.sin(rotX);
+
+    const cxp = W * 0.5, cyp = H * 0.5;
+    const R = Math.min(W, H) * 0.235;          // sphere screen radius
+    const FOV = 3.2;                            // perspective strength
+    const amp = 0.035 + inten * 0.17;
+    const nt = t * (0.55 + inten * 1.5);
+    const base = Math.max(1, Math.round(1.35 * DPR));
+
+    const pal = STATE_COLOR[S.mode] || STATE_COLOR.idle;
+    const pulse = 1 + Math.sin(t * 2.2) * 0.02 + inten * 0.10;
+
+    binCount.fill(0);
+
+    for (let i = 0; i < COUNT; i++) {
+      const ux = px[i], uy = py[i], uz = pz[i];
+
+      // --- two-octave lattice noise: neighbours move together, so the
+      //     surface churns in lobes rather than shimmering per-point.
+      const n1 = Math.sin(ux * 3.1 + nt) * Math.sin(uy * 2.7 - nt * 0.83) * Math.sin(uz * 3.5 + nt * 0.61);
+      const n2 = Math.sin(ux * 6.9 - nt * 1.4) * Math.sin(uy * 7.3 + nt * 1.1) * Math.sin(uz * 6.1 - nt * 0.9);
+      const jitter = (seed[i] - 0.5) * 0.035;
+      const rad = pulse * (1 + (n1 + n2 * 0.45) * amp + jitter);
+
+      const ax = ux * rad, ay = uy * rad, az = uz * rad;
+
+      // --- rotate Y then X
+      const bx = ax * cy + az * sy0;
+      const bz = -ax * sy0 + az * cy;
+      const by = ay * cx - bz * sx0;
+      const cz = ay * sx0 + bz * cx;
+
+      // --- perspective divide
+      const p = FOV / (FOV + cz);
+      sx[i] = cxp + bx * R * p;
+      sy[i] = cyp - by * R * p;
+      ss[i] = base * p * (0.75 + seed[i] * 0.6);
+
+      // depth → bin (0 = farthest)
+      let b = ((cz + 1.15) * 0.435 * BINS) | 0;
+      if (b < 0) b = 0; else if (b >= BINS) b = BINS - 1;
+      binOf[i] = b; binCount[b]++;
+    }
+
+    // Prefix sums → stable counting sort into `order`.
+    let acc = 0;
+    for (let b = 0; b < BINS; b++) { binHead[b] = acc; acc += binCount[b]; }
+    const cursor = binHead.slice();
+    for (let i = 0; i < COUNT; i++) order[cursor[binOf[i]]++] = i;
+
+    // --- backdrop glow (drawn before particles so it reads as volume)
+    const g = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, R * 1.55);
+    const cc = pal.core;
+    g.addColorStop(0,    "rgba(" + cc[0] + "," + cc[1] + "," + cc[2] + "," + (0.12 + inten * 0.16).toFixed(3) + ")");
+    g.addColorStop(0.42, "rgba(" + pal.edge[0] + "," + pal.edge[1] + "," + pal.edge[2] + ",0.09)");
+    g.addColorStop(1,    "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // --- particles, back to front, one fillStyle per depth bin
+    ctx.globalCompositeOperation = "lighter";
+    for (let b = 0; b < BINS; b++) {
+      const n = binCount[b]; if (!n) continue;
+      const d = b / (BINS - 1);                       // 0 far → 1 near
+      const k = d * d;                                 // bias brightness forward
+      const r = Math.round(lerp(pal.edge[0], pal.core[0], k));
+      const gq = Math.round(lerp(pal.edge[1], pal.core[1], k));
+      const bq = Math.round(lerp(pal.edge[2], pal.core[2], k));
+      const a = (0.10 + 0.62 * k * k) * (0.85 + inten * 0.3);
+      ctx.fillStyle = "rgba(" + r + "," + gq + "," + bq + "," + a.toFixed(3) + ")";
+      const start = binHead[b], end = start + n;
+      for (let j = start; j < end; j++) {
+        const i = order[j];
+        const s = ss[i] * (0.7 + k * 0.9);
+        ctx.fillRect(sx[i] - s * 0.5, sy[i] - s * 0.5, s, s);
+      }
+    }
+
+    // --- hot nucleus
+    const hot = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, R * (0.36 + inten * 0.12));
+    hot.addColorStop(0, "rgba(" + cc[0] + "," + cc[1] + "," + cc[2] + "," + (0.34 + inten * 0.34).toFixed(3) + ")");
+    hot.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = hot;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  return { draw, COUNT };
+})();
+
+/* ========================================================= §E RETICLE ====
+   Two counter-rotating dotted rings, a dashed arc, a 72-tick collar and 8
+   orbiting triangular markers. All speeds scale off the assistant state.
+   ======================================================================= */
+const RETICLE = (() => {
+  const cv = $("reticleCanvas");
+  const ctx = guard(() => cv.getContext("2d"), null);
+  const a = { markers: 0, arc: 0, collar: 0, dot: 0, dotInner: 0 };
+  const QUAD = ["N", "E", "S", "W"];
+
+  function ring(cx, cy, r, dash, color, lw, rot) {
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot);
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+  }
+
+  function draw(dt, t) {
+    if (!ctx) return;
+    const [W, H, DPR] = fitCanvas(cv);
+    ctx.clearRect(0, 0, W, H);
+    const cx = W * 0.5, cy = H * 0.5;
+    const U = Math.min(W, H) / 100;                  // one "HUD unit"
+    const speed = (STATE_RETICLE[S.mode] || 6) * (1 + S.intensity * 1.2) * (REDUCED ? 0.25 : 1);
+    const base = speed * dt * Math.PI / 180;
+
+    a.markers  = (a.markers  + base) % (Math.PI * 2);
+    a.arc      = (a.arc      - base * 0.62);
+    a.collar   = (a.collar   + base * 0.26);
+    a.dot      = (a.dot      + base * 0.85);
+    a.dotInner = (a.dotInner - base * 1.35);
+
+    const accent = S.mode === "error" ? "255,77,94" : "79,216,255";
+    const dim    = S.mode === "error" ? "255,181,69" : "28,111,146";
+
+    // static hairlines
+    ring(cx, cy, 35.5 * U, [], "rgba(" + dim + ",0.5)", 0.6 * DPR, 0);
+    ring(cx, cy, 26.0 * U, [], "rgba(" + dim + ",0.35)", 0.6 * DPR, 0);
+
+    // tick collar + quadrant labels
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(a.collar);
+    ctx.lineWidth = 0.8 * DPR;
+    for (let i = 0; i < 72; i++) {
+      const ang = (Math.PI * 2 / 72) * i - Math.PI / 2;
+      const major = i % 6 === 0;
+      const r0 = (43.2 - (major ? 3.1 : 1.5)) * U, r1 = 43.2 * U;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang) * r0, Math.sin(ang) * r0);
+      ctx.lineTo(Math.cos(ang) * r1, Math.sin(ang) * r1);
+      ctx.strokeStyle = major ? "rgba(" + accent + ",0.85)" : "rgba(" + dim + ",0.6)";
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(" + accent + ",0.9)";
+    ctx.font = (3.2 * U).toFixed(1) + "px " + getComputedStyle(document.body).fontFamily;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (let i = 0; i < 4; i++) {
+      const ang = (Math.PI / 2) * i - Math.PI / 2, r = 47 * U;
+      ctx.fillText(QUAD[i], Math.cos(ang) * r, Math.sin(ang) * r);
+    }
+    ctx.restore();
+
+    // dashed arc band + two counter-rotating dotted rings
+    ring(cx, cy, 45 * U, [7 * U, 3.4 * U], "rgba(" + accent + ",0.6)", 1.0 * DPR, a.arc);
+    ring(cx, cy, 39 * U, [0.9 * U, 3.2 * U], "rgba(" + accent + ",0.8)", 1.1 * DPR, a.dot);
+    ring(cx, cy, 31 * U, [0.7 * U, 4.4 * U], "rgba(" + dim + ",0.95)", 1.0 * DPR, a.dotInner);
+
+    // 8 orbiting triangular markers, alternating solid / hollow
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(a.markers);
+    for (let i = 0; i < 8; i++) {
+      const ang = (Math.PI * 2 / 8) * i - Math.PI / 2;
+      const x = Math.cos(ang) * 48 * U, y = Math.sin(ang) * 48 * U;
+      const hollow = i % 2 === 1;
+      const sz = (hollow ? 2.0 : 1.7) * U;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(ang + Math.PI / 2);
+      ctx.beginPath();
+      ctx.moveTo(0, -sz * 0.95); ctx.lineTo(sz * 0.62, sz * 0.59); ctx.lineTo(-sz * 0.62, sz * 0.59);
+      ctx.closePath();
+      if (hollow) { ctx.strokeStyle = "rgba(" + accent + ",0.9)"; ctx.lineWidth = 0.8 * DPR; ctx.stroke(); }
+      else { ctx.fillStyle = "rgba(" + accent + ",0.95)"; ctx.shadowBlur = 6 * DPR; ctx.shadowColor = "rgba(" + accent + ",0.8)"; ctx.fill(); ctx.shadowBlur = 0; }
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // fixed corner brackets around the whole assembly
+    ctx.strokeStyle = "rgba(" + accent + ",0.75)"; ctx.lineWidth = 1.4 * DPR;
+    const m = 6 * U, L = 12 * U, x0 = cx - 44 * U, y0 = cy - 44 * U, x1 = cx + 44 * U, y1 = cy + 44 * U;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 + L); ctx.lineTo(x0, y0); ctx.lineTo(x0 + L, y0);
+    ctx.moveTo(x1 - L, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y0 + L);
+    ctx.moveTo(x1, y1 - L); ctx.lineTo(x1, y1); ctx.lineTo(x1 - L, y1);
+    ctx.moveTo(x0 + L, y1); ctx.lineTo(x0, y1); ctx.lineTo(x0, y1 - L);
+    ctx.stroke();
+    void m;
+  }
+  return { draw };
+})();
+
+/* =========================================================== §F RADAR ====
+   Real spherical geometry: 7 latitude rings + 8 meridian great circles are
+   sampled on the unit sphere, spun about the polar axis, tilted, then
+   orthographically projected. Each sample is classified front/back at the
+   limb (z >= 0) so the globe reads as glass.
+   ======================================================================= */
+const RADAR = (() => {
+  const cv = $("radarCanvas");
+  const ctx = guard(() => cv.getContext("2d"), null);
+  const SAMPLES = 56;
+  const LATS = [-60, -40, -20, 0, 20, 40, 60];
+  const MERIDIANS = 8;
+  const TILT = 22 * Math.PI / 180;
+  let spin = 0.6, sweep = 0;
+
+  function project(latDeg, lonDeg, sp, cx, cy, R) {
+    const lat = latDeg * Math.PI / 180;
+    const lon = lonDeg * Math.PI / 180 + sp;
+    const cl = Math.cos(lat);
+    const x = cl * Math.sin(lon), y0 = Math.sin(lat), z0 = cl * Math.cos(lon);
+    const y = y0 * Math.cos(TILT) - z0 * Math.sin(TILT);
+    const z = y0 * Math.sin(TILT) + z0 * Math.cos(TILT);
+    return { x: cx + x * R, y: cy - y * R, front: z >= 0 };
+  }
+
+  function stroke(sample, cx, cy, R, front, color, lw, DPR) {
+    ctx.beginPath();
+    let pen = false;
+    for (let i = 0; i <= SAMPLES; i++) {
+      const p = sample(i / SAMPLES, cx, cy, R);
+      if (p.front !== front) { pen = false; continue; }
+      if (!pen) { ctx.moveTo(p.x, p.y); pen = true; } else ctx.lineTo(p.x, p.y);
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = lw * DPR; ctx.stroke();
+  }
+
+  function draw(dt, t) {
+    if (!ctx) return;
+    const [W, H, DPR] = fitCanvas(cv);
+    ctx.clearRect(0, 0, W, H);
+    const cx = W * 0.5, cy = H * 0.5;
+    const R = Math.min(W, H) * 0.33;
+    const k = REDUCED ? 0.2 : 1;
+    spin += dt * 9 * Math.PI / 180 * k;
+    sweep = (sweep + dt * 62 * k) % 360;
+
+    // range rings + crosshair
+    ctx.strokeStyle = "rgba(28,111,146,0.5)"; ctx.lineWidth = 0.8 * DPR;
+    for (const f of [1.22, 1.4]) { ctx.beginPath(); ctx.arc(cx, cy, R * f, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.strokeStyle = "rgba(28,111,146,0.32)";
+    ctx.beginPath();
+    ctx.moveTo(cx - R * 1.42, cy); ctx.lineTo(cx + R * 1.42, cy);
+    ctx.moveTo(cx, cy - R * 1.42); ctx.lineTo(cx, cy + R * 1.42);
+    ctx.stroke();
+
+    // radar sweep wedge (behind the wireframe)
+    const sr = sweep * Math.PI / 180 - Math.PI / 2;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.4);
+    grad.addColorStop(0, "rgba(79,216,255,0.20)");
+    grad.addColorStop(1, "rgba(79,216,255,0)");
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, R * 1.4, sr - Math.PI / 4, sr);
+    ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(sr) * R * 1.4, cy + Math.sin(sr) * R * 1.4);
+    ctx.strokeStyle = "rgba(126,232,255,0.85)"; ctx.lineWidth = 1.2 * DPR;
+    ctx.shadowBlur = 8 * DPR; ctx.shadowColor = "rgba(79,216,255,0.9)";
+    ctx.stroke(); ctx.shadowBlur = 0;
+
+    // wireframe: back hemisphere first so front strokes overdraw it
+    const curves = [];
+    for (const lat of LATS) curves.push({ major: lat === 0, at: (u, a, b, r) => project(lat, u * 360, spin, a, b, r) });
+    for (let i = 0; i < MERIDIANS; i++) {
+      const lon = (180 / MERIDIANS) * i;
+      curves.push({ major: i === 0, at: (u, a, b, r) => project(u * 360, lon, spin, a, b, r) });
+    }
+    for (const c of curves) stroke(c.at, cx, cy, R, false, "rgba(28,111,146,0.34)", 0.7, DPR);
+    for (const c of curves) stroke(c.at, cx, cy, R, true, c.major ? "rgba(126,232,255,0.9)" : "rgba(79,216,255,0.55)", c.major ? 1.05 : 0.8, DPR);
+
+    // limb
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(79,216,255,0.5)"; ctx.lineWidth = 0.9 * DPR; ctx.stroke();
+
+    // contacts — blink independently, fade when behind the limb
+    for (let i = 0; i < S.contacts.length; i++) {
+      const c = S.contacts[i];
+      const p = project(c.lat, c.lon, spin, cx, cy, R);
+      const blink = 0.45 + 0.55 * Math.abs(Math.sin(t * 2.1 + i * 0.9));
+      const alpha = (p.front ? 1 : 0.22) * blink;
+      const col = c.tone === "red" ? "255,77,94" : c.tone === "amber" ? "255,181,69" : "79,216,255";
+      ctx.beginPath(); ctx.arc(p.x, p.y, 1.2 * DPR + 0.6, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(" + col + "," + alpha.toFixed(3) + ")";
+      ctx.shadowBlur = 7 * DPR; ctx.shadowColor = "rgba(" + col + ",1)"; ctx.fill(); ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3.2 * DPR, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(" + col + "," + (alpha * 0.5).toFixed(3) + ")";
+      ctx.lineWidth = 0.7 * DPR; ctx.stroke();
+    }
+  }
+  return { draw };
+})();
+
+/* ======================================================== §G WAVEFORM ====
+   Mirrored bar spectrum with glow and smooth decay when the mic is silent.
+   Renders both the panel canvas and the small command-bar canvas.
+   ======================================================================= */
+const WAVE = (() => {
+  const cv = $("waveCanvas"), mini = $("miniWave");
+  const ctx = guard(() => cv.getContext("2d"), null);
+  const mctx = guard(() => mini.getContext("2d"), null);
+  const N = S.spectrum.length;
+  const shown = new Float32Array(N);
+
+  function paint(c, W, H, DPR, bars, glow) {
+    c.clearRect(0, 0, W, H);
+    const mid = H * 0.5;
+    const bw = W / bars;
+    for (let i = 0; i < bars; i++) {
+      const v = shown[Math.floor(i * N / bars)];
+      const h = Math.max(1 * DPR, v * (H * 0.46));
+      const x = i * bw + bw * 0.18, w = bw * 0.64;
+      const hot = clamp(v * 1.3);
+      const r = Math.round(lerp(27, 126, hot)), g = Math.round(lerp(143, 232, hot)), b = Math.round(lerp(224, 255, hot));
+      c.fillStyle = "rgba(" + r + "," + g + "," + b + "," + (0.35 + hot * 0.6).toFixed(3) + ")";
+      if (glow) { c.shadowBlur = 8 * DPR * hot; c.shadowColor = "rgba(79,216,255,0.9)"; }
+      c.fillRect(x, mid - h, w, h);
+      c.fillRect(x, mid, w, h * 0.72);
+      c.shadowBlur = 0;
+    }
+    // centre line
+    c.fillStyle = "rgba(79,216,255,0.28)";
+    c.fillRect(0, mid - 0.5 * DPR, W, Math.max(1, DPR));
+  }
+
+  function draw(dt, t) {
+    // Decay/attack per band toward the live spectrum.
+    for (let i = 0; i < N; i++) {
+      const target = S.spectrum[i];
+      shown[i] = target > shown[i] ? approach(shown[i], target, 26, dt) : approach(shown[i], target, 5.5, dt);
+    }
+    if (ctx) { const [W, H, DPR] = fitCanvas(cv); paint(ctx, W, H, DPR, 46, true); }
+    if (mctx) { const [W, H, DPR] = fitCanvas(mini); paint(mctx, W, H, DPR, 18, false); }
+  }
+  return { draw };
+})();
+
+/* =========================================================== §H VITALS === */
+const VITALS = (() => {
+  const DEFS = [
+    { k: "cpu",  label: "CPU",  unit: "%", warn: 70, crit: 88 },
+    { k: "mem",  label: "MEM",  unit: "%", warn: 75, crit: 90 },
+    { k: "disk", label: "DISK", unit: "%", warn: 80, crit: 93 },
+    { k: "net",  label: "NET",  unit: "%", warn: 75, crit: 92 },
+    { k: "pwr",  label: "PWR",  unit: "%", warn: -1, crit: -1, invert: true },
+  ];
+  const rows = {};
+  const shown = { cpu: 0, mem: 0, disk: 0, net: 0, pwr: 100 };
+
+  function build() {
+    const host = $("vitals");
+    for (const d of DEFS) {
+      const el = document.createElement("div");
+      el.className = "vital";
+      el.innerHTML = '<span class="vl"></span><span class="bar"><span class="fill"></span><span class="ticks"></span></span><span class="vv">--</span>';
+      el.querySelector(".vl").textContent = d.label;
+      host.appendChild(el);
+      rows[d.k] = { el, fill: el.querySelector(".fill"), val: el.querySelector(".vv"), def: d };
+    }
+  }
+
+  function level(d, v) {
+    if (d.invert) return v <= 12 ? "crit" : v <= 28 ? "warn" : "ok";
+    if (d.crit > 0 && v >= d.crit) return "crit";
+    if (d.warn > 0 && v >= d.warn) return "warn";
+    return "ok";
+  }
+
+  function draw(dt) {
+    const T = S.telemetry;
+    const netPct = clamp((Number(T.net_up || 0) + Number(T.net_down || 0)) / 2000, 0, 1) * 100;
+    const targets = {
+      cpu: Number(T.cpu) || 0, mem: Number(T.mem) || 0, disk: Number(T.disk) || 0,
+      net: netPct, pwr: T.battery == null ? 100 : Number(T.battery),
+    };
+    let worst = "ok";
+    for (const k in rows) {
+      const r = rows[k];
+      shown[k] = approach(shown[k], clamp(targets[k], 0, 100), 7, dt);
+      const v = shown[k];
+      r.fill.style.width = v.toFixed(1) + "%";
+      r.val.textContent = Math.round(v) + r.def.unit;
+      const lv = level(r.def, v);
+      r.el.dataset.lv = lv;
+      if (lv === "crit") worst = "crit"; else if (lv === "warn" && worst === "ok") worst = "warn";
+    }
+    const p = $("vitalsPanel");
+    p.dataset.tone = worst === "crit" ? "red" : worst === "warn" ? "amber" : "";
+    $("vitalsStatus").textContent = worst === "crit" ? "CRITICAL" : worst === "warn" ? "ELEVATED" : "NOMINAL";
+  }
+  return { build, draw };
+})();
+
+/* ======================================================== §I TELEMETRY === */
+const LOG = (() => {
+  const MAX = 60;
+  const host = () => $("telemetry");
+  function push(level, text) {
+    const h = host(); if (!h) return;
+    const d = new Date();
+    const row = document.createElement("div");
+    row.className = "trow lv-" + (level || "info");
+    const tag = ({ debug: "DBG", info: "INF", ok: "OK", warn: "WRN", error: "ERR" })[level] || "INF";
+    row.innerHTML = '<span class="tt"></span><span class="tg"></span><span class="tx"></span>';
+    row.children[0].textContent = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    row.children[1].textContent = tag;
+    row.children[2].textContent = String(text).slice(0, 160).toUpperCase();
+    row.children[2].title = String(text);
+    h.insertBefore(row, h.firstChild);
+    while (h.childElementCount > MAX) h.removeChild(h.lastElementChild);
+    S.events++;
+    $("telStatus").textContent = S.events + " EVT";
+  }
+  return { push };
+})();
+
+/* ====================================================== §J CLOCK + GEO === */
+const CLOCK = (() => {
+  const MON = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+  const DAY = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+  let lastSec = -1;
+  const geo = { lat: 51.5074, lon: -0.1278, alt: 11 };
+  let geoLive = false;
+
+  function initGeo() {
+    // Simulated coordinates drift gently until (and unless) the user grants
+    // geolocation; the readout must never look dead.
+    guard(() => {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          geo.lat = p.coords.latitude; geo.lon = p.coords.longitude;
+          geo.alt = p.coords.altitude == null ? 11 : p.coords.altitude;
+          geoLive = true;
+          LOG.push("ok", "Positional fix acquired");
+        },
+        () => { LOG.push("warn", "Positional fix denied — using last known"); },
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+      );
+    });
+  }
+
+  function maiden(lat, lon) {
+    const l = lon + 180, a = lat + 90;
+    const A = "ABCDEFGHIJKLMNOPQR";
+    return A[Math.floor(l / 20)] + A[Math.floor(a / 10)] +
+           Math.floor((l % 20) / 2) + Math.floor(a % 10) +
+           "AB"[Math.floor((l % 2) * 2) % 2] + "XY"[Math.floor(a % 1 * 2) % 2];
+  }
+
+  function draw(dt, t) {
+    const d = new Date();
+    const cc = Math.floor(d.getMilliseconds() / 10);
+    $("clockMain").innerHTML = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()) +
+      '<span class="cc">.' + pad(cc) + "</span>";
+    if (d.getSeconds() !== lastSec) {
+      lastSec = d.getSeconds();
+      $("clockDate").textContent = DAY[d.getDay()] + " " + pad(d.getDate()) + " " + MON[d.getMonth()] + " " + d.getFullYear() +
+        " · UTC" + (d.getTimezoneOffset() > 0 ? "-" : "+") + pad(Math.abs(d.getTimezoneOffset()) / 60);
+      const wob = geoLive ? 0 : Math.sin(t * 0.13) * 0.0009;
+      $("geoLat").textContent = (geo.lat + wob).toFixed(4);
+      $("geoLon").textContent = (geo.lon - wob).toFixed(4);
+      $("geoAlt").textContent = Math.round(geo.alt + Math.sin(t * 0.21) * 2) + " M";
+      $("geoGrid").textContent = guard(() => maiden(geo.lat, geo.lon), "------");
+    }
+  }
+  return { draw, initGeo };
+})();
+
+/* ====================================================== §K DIAGNOSTICS === */
+const DIAG = (() => {
+  const KEYS = [
+    ["CORE", () => CORE.COUNT + " PTS"],
+    ["FPS",  () => String(S.fps)],
+    ["LINK", () => (S.connected ? "LIVE" : S.simulated ? "SIM" : "DOWN")],
+    ["RTT",  () => (S.latency ? Math.round(S.latency) + "MS" : "—")],
+    ["PROC", () => String(S.telemetry.processes || 0)],
+    ["TEMP", () => (S.telemetry.temp_c == null ? "—" : Math.round(S.telemetry.temp_c) + "°C")],
+    ["UP",   () => { const s = Math.floor(S.telemetry.uptime_s || 0); return pad(s / 3600 | 0) + ":" + pad((s / 60 | 0) % 60); }],
+    ["MEMB", () => (S.toggles.memory ? "ARMED" : "OFF")],
+    ["OPT",  () => (S.toggles.vision ? "ACTIVE" : "IDLE")],
+    ["VOX",  () => (S.toggles.voice ? "ARMED" : "OFF")],
+    ["EVT",  () => String(S.events)],
+    ["MODE", () => S.mode.toUpperCase()],
+  ];
+  const cells = [];
+  function build() {
+    const host = $("diag");
+    for (const [k, fn] of KEYS) {
+      const el = document.createElement("div");
+      el.className = "dk" + (Math.random() < 0.3 ? " flick" : "");
+      el.innerHTML = "<span></span><b></b>";
+      el.children[0].textContent = k;
+      host.appendChild(el);
+      cells.push([el.children[1], fn]);
+    }
+  }
+  let acc = 0;
+  function draw(dt) {
+    acc += dt; if (acc < 0.25) return; acc = 0;
+    for (const [el, fn] of cells) { const v = guard(fn, "—"); if (el.textContent !== v) el.textContent = v; }
+  }
+  return { build, draw };
+})();
+
+/* ============================================================ §L CHIPS === */
+const CHIPS = (() => {
+  const DEFS = [
+    { id: "online", label: "ONLINE", toggle: false },
+    { id: "vision", label: "VISION", toggle: true },
+    { id: "memory", label: "MEMORY", toggle: true },
+    { id: "voice",  label: "VOICE",  toggle: true },
+  ];
+  const els = {};
+  function build() {
+    const host = $("chips");
+    for (const d of DEFS) {
+      const b = document.createElement("button");
+      b.className = "chip"; b.type = "button"; b.dataset.on = "0";
+      b.innerHTML = '<span class="dot"></span><span></span>';
+      b.children[1].textContent = d.label;
+      b.addEventListener("click", () => onClick(d.id));
+      host.appendChild(b);
+      els[d.id] = b;
+    }
+    sync();
+  }
+  function onClick(id) {
+    if (id === "online") { TRANSPORT.reconnectNow(); return; }
+    if (id === "vision") { S.toggles.vision ? VISION.stop() : VISION.start(); return; }
+    if (id === "memory") { S.toggles.memory = !S.toggles.memory; LOG.push("info", "Memory subsystem " + (S.toggles.memory ? "armed" : "disarmed")); sync(); return; }
+    if (id === "voice")  { S.toggles.voice ? VOICE.stop() : VOICE.start(); return; }
+  }
+  function sync() {
+    els.online.dataset.on = S.connected ? "1" : (S.simulated ? "warn" : "err");
+    els.online.children[1].textContent = S.connected ? "ONLINE" : (S.simulated ? "SIMULATED" : "DISCONNECTED");
+    els.vision.dataset.on = S.toggles.vision ? "1" : "0";
+    els.memory.dataset.on = S.toggles.memory ? "1" : "0";
+    els.voice.dataset.on  = S.toggles.voice ? "1" : "0";
+    $("linkState").textContent = S.connected ? "LIVE" : (S.simulated ? "SIMULATED" : "DOWN");
+  }
+  return { build, sync };
+})();
+
+/* =========================================================== §M VISION ===
+   getUserMedia preview + targeting overlay. Faces come from the native
+   FaceDetector where present (PORT-CONTRACTS §5); zero faces is a valid
+   result, not an error. Frames go out at ~1fps through an offscreen canvas
+   and are never written to disk.
+   ======================================================================= */
+const VISION = (() => {
+  const vid = $("vidEl"), ov = $("visionOverlay"), wrap = $("visionWrap");
+  const ctx = guard(() => ov.getContext("2d"), null);
+  const off = document.createElement("canvas");
+  const offCtx = guard(() => off.getContext("2d", { willReadFrequently: false }), null);
+  off.width = 320; off.height = 240;
+
+  let stream = null, detector = null, sendAcc = 0, detAcc = 0, detecting = false;
+  let boxes = [];   // [{x,y,w,h,label}] in normalised 0..1 coords
+
+  function msg(text, isErr) {
+    const m = $("visionMsg");
+    m.innerHTML = text; m.hidden = false; m.className = isErr ? "err" : "";
+  }
+
+  async function start() {
+    if (stream) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      msg("OPTICAL SENSOR UNAVAILABLE<br>THIS BROWSER EXPOSES NO CAMERA API", true);
+      LOG.push("warn", "getUserMedia unavailable"); return;
+    }
+    msg("ACQUIRING OPTICAL SENSOR…", false);
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" }, audio: false });
+    } catch (e) {
+      stream = null;
+      const denied = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+      msg(denied ? "CAMERA ACCESS DENIED<br>GRANT PERMISSION IN BROWSER SETTINGS"
+                 : "OPTICAL SENSOR FAULT<br>" + String((e && e.name) || "UNKNOWN"), true);
+      LOG.push("error", "Camera denied: " + ((e && e.name) || "unknown"));
+      $("visionStatus").textContent = "DENIED";
+      S.toggles.vision = false; CHIPS.sync();
+      return;
+    }
+    vid.srcObject = stream; vid.hidden = false;
+    guard(() => vid.play());
+    $("visionMsg").hidden = true;
+    $("visionReadout").hidden = false;
+    $("visionStatus").textContent = "ACTIVE";
+    S.toggles.vision = true; CHIPS.sync();
+    LOG.push("ok", "Optical sensor online");
+
+    detector = guard(() => (typeof window.FaceDetector === "function"
+      ? new window.FaceDetector({ fastMode: true, maxDetectedFaces: 8 }) : null), null);
+    if (!detector) LOG.push("debug", "FaceDetector unavailable — geometry degrades to none");
+  }
+
+  function stop() {
+    if (stream) { guard(() => stream.getTracks().forEach((t) => t.stop())); stream = null; }
+    vid.srcObject = null; vid.hidden = true;
+    boxes = []; S.vision.faces = 0;
+    $("visionReadout").hidden = true;
+    wrap.dataset.scanning = "0";
+    msg("OPTICAL SENSOR OFFLINE<br>ENGAGE <b>VISION</b> CHIP TO ENABLE", false);
+    $("visionStatus").textContent = "OFFLINE";
+    S.toggles.vision = false; CHIPS.sync();
+    LOG.push("info", "Optical sensor offline");
+  }
+
+  async function detect() {
+    if (!detector || detecting || !vid.videoWidth) return;
+    detecting = true;
+    try {
+      const faces = await detector.detect(vid);
+      boxes = faces.map((f) => ({
+        x: f.boundingBox.x / vid.videoWidth, y: f.boundingBox.y / vid.videoHeight,
+        w: f.boundingBox.width / vid.videoWidth, h: f.boundingBox.height / vid.videoHeight,
+        label: "FACE",
+      }));
+      S.vision.faces = boxes.length;
+    } catch (e) { /* transient detector failures are non-fatal */ }
+    detecting = false;
+  }
+
+  function sendFrame() {
+    if (!offCtx || !vid.videoWidth || !TRANSPORT.isOpen()) return;
+    let b64 = "";
+    try {
+      offCtx.drawImage(vid, 0, 0, off.width, off.height);
+      b64 = off.toDataURL("image/jpeg", 0.6).split(",")[1] || "";
+    } catch (e) { return; }              // tainted canvas etc. — silently skip
+    if (!b64) return;
+    wrap.dataset.scanning = "1";
+    TRANSPORT.send({ type: "frame", jpeg_b64: b64, id: uid() });
+  }
+
+  function draw(dt, t) {
+    if (!ctx) return;
+    const [W, H, DPR] = fitCanvas(ov);
+    ctx.clearRect(0, 0, W, H);
+    if (!stream) return;
+
+    detAcc += dt; if (detAcc > 0.35) { detAcc = 0; detect(); }
+    sendAcc += dt; if (sendAcc > 1.0) { sendAcc = 0; sendFrame(); }
+
+    // targeting reticle corners over each box (video is mirrored via CSS)
+    ctx.lineWidth = 1.3 * DPR;
+    for (const b of boxes) {
+      const x = (1 - b.x - b.w) * W, y = b.y * H, w = b.w * W, h = b.h * H;
+      const L = Math.min(w, h) * 0.26;
+      const pulse = 0.6 + 0.4 * Math.abs(Math.sin(t * 3));
+      ctx.strokeStyle = "rgba(79,216,255," + pulse.toFixed(2) + ")";
+      ctx.shadowBlur = 6 * DPR; ctx.shadowColor = "rgba(79,216,255,0.8)";
+      ctx.beginPath();
+      ctx.moveTo(x, y + L); ctx.lineTo(x, y); ctx.lineTo(x + L, y);
+      ctx.moveTo(x + w - L, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + L);
+      ctx.moveTo(x + w, y + h - L); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w - L, y + h);
+      ctx.moveTo(x + L, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + h - L);
+      ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.fillStyle = "rgba(126,232,255,0.9)";
+      ctx.font = (8 * DPR) + "px " + getComputedStyle(document.body).fontFamily;
+      ctx.fillText(b.label, x, Math.max(9 * DPR, y - 3 * DPR));
+    }
+
+    // crosshair graticule
+    ctx.strokeStyle = "rgba(79,216,255,0.16)"; ctx.lineWidth = DPR;
+    ctx.beginPath();
+    ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2);
+    ctx.stroke();
+
+    $("vFaces").textContent = String(S.vision.faces || 0);
+    $("vObjs").textContent = String((S.vision.objects && S.vision.objects.length) || 0);
+  }
+
+  /** Applies a server `vision` event. */
+  function apply(ev) {
+    if (typeof ev.faces === "number" && !detector) S.vision.faces = ev.faces;
+    if (Array.isArray(ev.objects)) {
+      S.vision.objects = ev.objects;
+      if (ev.width && ev.height) {
+        const extra = ev.objects.slice(0, 8).map((o) => ({
+          x: o.box[0] / ev.width, y: o.box[1] / ev.height,
+          w: o.box[2] / ev.width, h: o.box[3] / ev.height,
+          label: String(o.label || "OBJ").toUpperCase(),
+        }));
+        boxes = boxes.filter((b) => b.label === "FACE").concat(extra);
+      }
+    }
+    if (typeof ev.text === "string") { S.vision.text = ev.text; $("vOcr").textContent = "OCR " + (ev.text ? ev.text.slice(0, 60) : "—"); }
+    if (typeof ev.scene === "string" && ev.scene) {
+      S.vision.scene = ev.scene;
+      $("sceneText").textContent = ev.scene;
+      $("sceneStatus").textContent = "RESOLVED";
+    }
+    wrap.dataset.scanning = "0";
+  }
+
+  return { start, stop, draw, apply };
+})();
+
+/* ============================================================ §N AUDIO ===
+   AnalyserNode → RMS level (drives core intensity) and a 48-band spectrum
+   (drives the waveform). Entirely optional: without a mic the HUD runs a
+   gentle idle shimmer so the panel never looks dead.
+   ======================================================================= */
+const AUDIO = (() => {
+  let ac = null, analyser = null, srcNode = null, stream = null, data = null;
+  let active = false;
+
+  async function start() {
+    if (active) return true;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      LOG.push("warn", "Audio capture unavailable in this browser"); return false;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (e) {
+      LOG.push("error", "Microphone denied: " + ((e && e.name) || "unknown"));
+      $("waveStatus").textContent = "DENIED";
+      return false;
+    }
+    try {
+      ac = new AC();
+      guard(() => ac.resume());
+      analyser = ac.createAnalyser();
+      analyser.fftSize = 256; analyser.smoothingTimeConstant = 0.72;
+      data = new Uint8Array(analyser.frequencyBinCount);
+      srcNode = ac.createMediaStreamSource(stream);
+      srcNode.connect(analyser);              // never connected to destination
+      active = true;
+      $("waveStatus").textContent = "LIVE";
+      LOG.push("ok", "Audio intake online");
+      return true;
+    } catch (e) {
+      LOG.push("error", "Audio graph fault"); stop(); return false;
+    }
+  }
+
+  function stop() {
+    active = false;
+    guard(() => { if (srcNode) srcNode.disconnect(); });
+    guard(() => { if (stream) stream.getTracks().forEach((t) => t.stop()); });
+    guard(() => { if (ac) ac.close(); });
+    ac = analyser = srcNode = stream = data = null;
+    S.micLevel = 0;
+    $("waveStatus").textContent = "MUTED";
+  }
+
+  function draw(dt, t) {
+    const N = S.spectrum.length;
+    if (active && analyser && data) {
+      analyser.getByteFrequencyData(data);
+      let sum = 0;
+      const step = data.length / N;
+      for (let i = 0; i < N; i++) {
+        let acc = 0, n = 0;
+        for (let j = Math.floor(i * step); j < Math.floor((i + 1) * step); j++) { acc += data[j]; n++; }
+        const v = n ? (acc / n) / 255 : 0;
+        S.spectrum[i] = v;
+        sum += v;
+      }
+      S.micLevel = clamp((sum / N) * 2.4);
+    } else {
+      // Idle shimmer — a quiet breathing spectrum, clearly not "live".
+      for (let i = 0; i < N; i++) {
+        const f = i / N;
+        S.spectrum[i] = Math.max(0,
+          (0.10 + 0.07 * Math.sin(t * 1.4 + i * 0.35) + 0.05 * Math.sin(t * 0.7 - i * 0.13)) *
+          (1 - f * 0.65) * (S.mode === "speaking" ? 2.6 : S.mode === "thinking" ? 1.7 : 1));
+      }
+      S.micLevel = 0;
+    }
+  }
+
+  return { start, stop, draw, isActive: () => active };
+})();
+
+/* ============================================== §O SPEECH RECOGNITION ====
+   Wake word "jarvis". Continuous where supported; auto-restarts on end.
+   Absent API → the mic button still works for level metering only.
+   ======================================================================= */
+const VOICE = (() => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, want = false, restartTimer = 0, awake = false, awakeTimer = 0;
+
+  function setTranscript(html) { $("transcript").innerHTML = html; }
+
+  async function start() {
+    want = true;
+    S.toggles.voice = true; CHIPS.sync();
+    $("micBtn").dataset.on = "1";
+    await AUDIO.start();
+
+    if (!SR) {
+      setTranscript("SPEECH RECOGNITION UNAVAILABLE — <b>MIC METERING ONLY</b>");
+      LOG.push("warn", "SpeechRecognition API absent");
+      setMode("listening");
+      return;
+    }
+    if (rec) return;
+    try {
+      rec = new SR();
+      rec.continuous = true; rec.interimResults = true; rec.lang = "en-GB"; rec.maxAlternatives = 1;
+      rec.onstart = () => { setMode("listening"); setTranscript("LISTENING — SAY <b>“JARVIS”</b>"); };
+      rec.onerror = (e) => {
+        const err = (e && e.error) || "unknown";
+        if (err === "not-allowed" || err === "service-not-allowed") {
+          LOG.push("error", "Voice input denied");
+          setTranscript("VOICE INPUT DENIED — <b>CHECK MIC PERMISSION</b>");
+          want = false; S.toggles.voice = false; CHIPS.sync(); $("micBtn").dataset.on = "0";
+        } else if (err !== "no-speech" && err !== "aborted") {
+          LOG.push("warn", "Voice recogniser: " + err);
+        }
+      };
+      rec.onend = () => {
+        if (!want) { setMode("idle"); return; }
+        clearTimeout(restartTimer);
+        restartTimer = setTimeout(() => guard(() => rec && rec.start()), 400);
+      };
+      rec.onresult = (ev) => onResult(ev);
+      rec.start();
+      LOG.push("ok", "Voice interface armed");
+    } catch (e) {
+      rec = null;
+      LOG.push("warn", "Voice recogniser failed to start");
+    }
+  }
+
+  function onResult(ev) {
+    let interim = "", finalTxt = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      if (r.isFinal) finalTxt += r[0].transcript; else interim += r[0].transcript;
+    }
+    const live = (finalTxt || interim).trim();
+    if (live) setTranscript((awake ? "<b>▶ </b>" : "") + live.slice(0, 120).toUpperCase());
+
+    const lower = live.toLowerCase();
+    if (!awake && /\bjarvis\b/.test(lower)) {
+      awake = true;
+      clearTimeout(awakeTimer);
+      awakeTimer = setTimeout(() => { awake = false; setTranscript("STANDBY — SAY <b>“JARVIS”</b>"); }, 9000);
+      LOG.push("ok", "Wake word detected");
+      COMMS.system("Wake word acknowledged.");
+    }
+    if (!finalTxt.trim()) return;
+
+    let cmd = finalTxt.trim();
+    const m = cmd.toLowerCase().indexOf("jarvis");
+    if (m >= 0) cmd = cmd.slice(m + 6).replace(/^[\s,.:;-]+/, "");
+    if (!awake || !cmd) return;
+    awake = false; clearTimeout(awakeTimer);
+    COMMS.submit(cmd, "voice");
+  }
+
+  function stop() {
+    want = false;
+    S.toggles.voice = false; CHIPS.sync();
+    $("micBtn").dataset.on = "0";
+    clearTimeout(restartTimer); clearTimeout(awakeTimer); awake = false;
+    guard(() => { if (rec) { rec.onend = null; rec.stop(); } });
+    rec = null;
+    AUDIO.stop();
+    setTranscript("VOICE INTERFACE STANDBY — SAY <b>“JARVIS”</b> TO WAKE");
+    if (S.mode === "listening") setMode("idle");
+    LOG.push("info", "Voice interface disarmed");
+  }
+
+  return { start, stop, available: !!SR };
+})();
+
+/* ============================================== §P SPEECH SYNTHESIS ===== */
+const TTS = (() => {
+  const synth = window.speechSynthesis;
+  let voice = null;
+
+  function pick() {
+    if (!synth) return;
+    const list = guard(() => synth.getVoices(), []) || [];
+    if (!list.length) return;
+    const score = (v) => {
+      let s = 0;
+      const n = (v.name || "").toLowerCase();
+      if ((v.lang || "").toLowerCase().startsWith("en-gb")) s += 60;
+      else if ((v.lang || "").toLowerCase().startsWith("en")) s += 20;
+      if (/daniel|arthur|george|oliver|male|brian|ryan/.test(n)) s += 30;  // deeper timbres
+      if (/female|samantha|karen|zira|serena/.test(n)) s -= 20;
+      if (/google uk english male/.test(n)) s += 25;
+      return s;
+    };
+    voice = list.slice().sort((a, b) => score(b) - score(a))[0] || null;
+  }
+
+  function speak(text) {
+    if (!synth || !text) return;
+    guard(() => {
+      if (!voice) pick();
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(String(text).slice(0, 600));
+      if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = "en-GB";
+      u.rate = 1.0; u.pitch = 0.82; u.volume = 1;
+      u.onstart = () => setMode("speaking");
+      u.onend = () => { if (S.mode === "speaking") setMode(S.toggles.voice ? "listening" : "idle"); };
+      u.onerror = () => { if (S.mode === "speaking") setMode("idle"); };
+      synth.speak(u);
+    });
+  }
+
+  function init() {
+    if (!synth) { LOG.push("debug", "SpeechSynthesis unavailable"); return; }
+    pick();
+    guard(() => { synth.onvoiceschanged = pick; });
+  }
+  return { init, speak };
+})();
+
+/* ======================================================= §Q TRANSPORT ====
+   Auto-reconnecting WebSocket with exponential backoff + jitter. Any failure
+   drops the HUD into simulated mode rather than leaving it looking broken.
+   ======================================================================= */
+const TRANSPORT = (() => {
+  let ws = null, attempt = 0, timer = 0, pingTimer = 0, closing = false, lastPing = 0;
+
+  function url() {
+    const q = guard(() => new URLSearchParams(location.search).get("ws"), null);
+    if (q) return q;
+    const stored = guard(() => localStorage.getItem("jarvis.ws"), null);
+    if (stored) return stored;
+    if (location.protocol === "http:" || location.protocol === "https:") {
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      return proto + "//" + location.host + "/ws";
+    }
+    return "ws://localhost:8000/ws";           // opened from file:// — dev default
+  }
+
+  function connect() {
+    if (closing) return;
+    clearTimeout(timer);
+    if (typeof WebSocket !== "function") {
+      S.simulated = true; CHIPS.sync();
+      LOG.push("warn", "WebSocket unsupported — simulation only");
+      return;
+    }
+    let u = url();
+    try { ws = new WebSocket(u); } catch (e) { ws = null; scheduleRetry(); return; }
+
+    ws.onopen = () => {
+      attempt = 0; S.connected = true; S.simulated = false;
+      CHIPS.sync();
+      LOG.push("ok", "Uplink established → " + u);
+      COMMS.system("Uplink established.");
+      clearInterval(pingTimer);
+      pingTimer = setInterval(() => { lastPing = performance.now(); send({ type: "ping" }); }, 15000);
+    };
+    ws.onmessage = (ev) => {
+      let msg = null;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (!msg || typeof msg.type !== "string") return;
+      handle(msg);
+    };
+    ws.onerror = () => { /* onclose always follows; nothing to do here */ };
+    ws.onclose = () => {
+      const was = S.connected;
+      S.connected = false; S.simulated = true; ws = null;
+      clearInterval(pingTimer);
+      CHIPS.sync();
+      if (was) { LOG.push("warn", "Uplink lost — reverting to simulation"); COMMS.system("Uplink lost. Running on local simulation."); }
+      scheduleRetry();
+    };
+  }
+
+  function scheduleRetry() {
+    if (closing) return;
+    attempt = Math.min(attempt + 1, 8);
+    const base = Math.min(30000, 700 * Math.pow(1.8, attempt));
+    const wait = base * (0.75 + Math.random() * 0.5);      // jitter
+    S.simulated = true; CHIPS.sync();
+    clearTimeout(timer);
+    timer = setTimeout(connect, wait);
+  }
+
+  function isOpen() { return !!ws && ws.readyState === 1; }
+  function send(obj) { if (isOpen()) guard(() => ws.send(JSON.stringify(obj))); }
+
+  function reconnectNow() {
+    LOG.push("info", "Manual uplink retry");
+    attempt = 0; clearTimeout(timer);
+    guard(() => { if (ws) ws.close(); });
+    ws = null; connect();
+  }
+
+  /** Applies one ServerEvent (see server/src/types.ts). */
+  function handle(m) {
+    switch (m.type) {
+      case "token":
+        COMMS.token(m.id, String(m.text || ""));
+        setMode("thinking");
+        break;
+      case "done":
+        COMMS.done(m.id, String(m.text || ""));
+        setMode("idle");
+        if (m.text) TTS.speak(String(m.text));
+        break;
+      case "thinking":
+        setMode("thinking");
+        LOG.push("debug", "Stage: " + String(m.stage || "?"));
+        $("cmdStatus").textContent = String(m.stage || "thinking").toUpperCase();
+        break;
+      case "tool_call":
+        LOG.push("info", "Tool → " + String(m.name));
+        COMMS.system("Invoking " + String(m.name) + "…");
+        break;
+      case "tool_result":
+        LOG.push(m.ok ? "ok" : "error", String(m.name) + ": " + String(m.summary || ""));
+        break;
+      case "telemetry": {
+        const t = S.telemetry;
+        for (const k of ["cpu","mem","disk","net_up","net_down","battery","uptime_s","processes","temp_c"]) {
+          if (m[k] !== undefined) t[k] = m[k];
+        }
+        S.latency = performance.now() - lastPing > 0 && lastPing ? Math.min(S.latency || 40, performance.now() - lastPing) : S.latency;
+        break;
+      }
+      case "vision":
+        VISION.apply(m);
+        break;
+      case "speak":
+        TTS.speak(String(m.text || ""));
+        break;
+      case "log":
+        LOG.push(String(m.level || "info"), String(m.text || ""));
+        break;
+      case "error":
+        LOG.push("error", String(m.text || "unknown fault"));
+        COMMS.error(String(m.text || "Unknown fault."));
+        setMode("error");
+        setTimeout(() => { if (S.mode === "error") setMode("idle"); }, 3200);
+        break;
+      default: break;
+    }
+  }
+
+  window.addEventListener("beforeunload", () => { closing = true; guard(() => ws && ws.close()); });
+
+  return { connect, send, isOpen, reconnectNow };
+})();
+
+/* ======================================================= §R SIMULATION ===
+   Keeps every panel alive with no server: random-walk telemetry, rolling
+   log chatter, drifting radar contacts, canned assistant replies.
+   ======================================================================= */
+const SIM = (() => {
+  const CHATTER = [
+    ["debug", "Lattice coherence within tolerance"],
+    ["info",  "Thermal envelope stable"],
+    ["ok",    "Diagnostic sweep complete"],
+    ["info",  "Indexing local knowledge shards"],
+    ["debug", "Reticle phase-locked"],
+    ["warn",  "Sensor grid jitter detected"],
+    ["info",  "Recalibrating gyroscopic reference"],
+    ["ok",    "Perimeter scan nominal"],
+    ["debug", "Memory consolidation pass queued"],
+    ["info",  "Uplink handshake retry armed"],
+    ["ok",    "Optical pipeline warm"],
+    ["debug", "Vector index compacted"],
+  ];
+  const REPLIES = [
+    "Running that now, sir. Local simulation only — the server uplink is offline.",
+    "Understood. I've logged the directive; results will resolve once the uplink returns.",
+    "All primary systems remain nominal. Nothing in the telemetry warrants your attention.",
+    "I can action that as soon as the backend responds. Standing by.",
+    "Noted. I've routed the request into the pending queue.",
+  ];
+  const walk = { cpu: 14, mem: 41, disk: 56, up: 90, down: 300, temp: 42, batt: 92 };
+  let logAcc = 0, telAcc = 0, contactAcc = 0, boot = 0;
+
+  function seedContacts() {
+    S.contacts = [];
+    const n = 7;
+    for (let i = 0; i < n; i++) {
+      S.contacts.push({
+        lat: rnd(-62, 62), lon: rnd(-180, 180),
+        tone: i === 0 ? "amber" : i === 4 ? "red" : "cyan",
+        drift: rnd(-4, 4),
+      });
+    }
+    $("radarStatus").textContent = S.contacts.length + " CONTACTS";
+  }
+
+  function step(dt, t) {
+    // contacts drift regardless of link state — the globe is a local display
+    contactAcc += dt;
+    for (const c of S.contacts) { c.lon += c.drift * dt * 0.35; if (c.lon > 180) c.lon -= 360; if (c.lon < -180) c.lon += 360; }
+    if (contactAcc > 11) {
+      contactAcc = 0;
+      const c = S.contacts[Math.floor(Math.random() * S.contacts.length)];
+      if (c) { c.lat = rnd(-62, 62); c.lon = rnd(-180, 180); }
+    }
+
+    if (S.connected) return;   // live data owns telemetry when the uplink is up
+
+    telAcc += dt;
+    if (telAcc > 0.9) {
+      telAcc = 0;
+      const load = S.mode === "thinking" ? 34 : S.mode === "speaking" ? 14 : 0;
+      walk.cpu  = clamp(walk.cpu  + rnd(-6, 6) + (load - (walk.cpu > 40 ? 8 : 0)), 4, 97);
+      walk.mem  = clamp(walk.mem  + rnd(-2.2, 2.4), 22, 91);
+      walk.disk = clamp(walk.disk + rnd(-0.4, 0.42), 30, 95);
+      walk.up   = clamp(walk.up   + rnd(-70, 74), 2, 1800);
+      walk.down = clamp(walk.down + rnd(-160, 168), 5, 2400);
+      walk.temp = clamp(walk.temp + rnd(-1.1, 1.15) + (walk.cpu > 70 ? 0.5 : -0.2), 32, 88);
+      walk.batt = clamp(walk.batt - dt * 0.02, 14, 100);
+      S.telemetry = {
+        cpu: walk.cpu, mem: walk.mem, disk: walk.disk,
+        net_up: walk.up, net_down: walk.down,
+        battery: walk.batt, uptime_s: boot + t,
+        processes: 190 + Math.round(Math.sin(t * 0.11) * 26 + rnd(-4, 4)),
+        temp_c: walk.temp,
+      };
+    }
+
+    logAcc += dt;
+    if (logAcc > rnd(2.6, 5.2)) {
+      logAcc = 0;
+      const c = CHATTER[Math.floor(Math.random() * CHATTER.length)];
+      LOG.push(c[0], c[1]);
+    }
+  }
+
+  /** Streams a canned reply so the command bar behaves identically offline. */
+  function reply(text) {
+    const id = uid();
+    let out = REPLIES[Math.floor(Math.random() * REPLIES.length)];
+    if (/status|report|system|vitals/i.test(text)) {
+      out = "System report: CPU at " + Math.round(S.telemetry.cpu) + " percent, memory at " +
+            Math.round(S.telemetry.mem) + " percent, " + S.telemetry.processes +
+            " processes running. Uplink is offline, so this is local simulation.";
+    } else if (/hello|hi\b|jarvis/i.test(text)) {
+      out = "At your service. All local subsystems are responding; the server uplink is not.";
+    } else if (/time|clock/i.test(text)) {
+      out = "It is " + new Date().toLocaleTimeString() + ", sir.";
+    }
+    setMode("thinking");
+    COMMS.beginStream(id);
+    let i = 0;
+    const tick = () => {
+      if (i >= out.length) { COMMS.done(id, out); setMode("idle"); TTS.speak(out); return; }
+      const n = 1 + Math.floor(Math.random() * 4);
+      COMMS.token(id, out.slice(i, i + n));
+      i += n;
+      setTimeout(tick, 22 + Math.random() * 34);
+    };
+    setTimeout(tick, 420);
+  }
+
+  function init() { boot = rnd(3600, 96000); seedContacts(); }
+  return { init, step, reply };
+})();
+
+/* ============================================================ §S COMMS === */
+const COMMS = (() => {
+  const MAX = 80;
+  const host = () => $("comms");
+  let streams = {};
+
+  function row(cls, who, text) {
+    const h = host(); if (!h) return null;
+    const el = document.createElement("div");
+    el.className = "msg " + cls;
+    el.innerHTML = '<span class="who"></span><span class="body"></span>';
+    el.children[0].textContent = who;
+    el.children[1].textContent = text;
+    h.appendChild(el);
+    while (h.childElementCount > MAX) h.removeChild(h.firstElementChild);
+    h.scrollTop = h.scrollHeight;
+    return el;
+  }
+
+  const system = (t) => row("sys", "SYS", t);
+  const error  = (t) => row("err", "FAULT", t);
+
+  function beginStream(id) {
+    const el = row("jarvis", "JARVIS", "");
+    if (!el) return;
+    const caret = document.createElement("span");
+    caret.className = "caretRun";
+    el.children[1].appendChild(caret);
+    streams[id] = { el, caret, text: "" };
+  }
+
+  function token(id, text) {
+    let s = streams[id];
+    if (!s) { beginStream(id); s = streams[id]; }
+    if (!s) return;
+    s.text += text;
+    s.caret.remove();
+    s.el.children[1].textContent = s.text;
+    s.el.children[1].appendChild(s.caret);
+    host().scrollTop = host().scrollHeight;
+  }
+
+  function done(id, finalText) {
+    const s = streams[id];
+    if (s) {
+      s.caret.remove();
+      if (finalText && finalText.length >= s.text.length) s.el.children[1].textContent = finalText;
+      delete streams[id];
+    } else if (finalText) {
+      row("jarvis", "JARVIS", finalText);
+    }
+    $("cmdStatus").textContent = "READY";
+  }
+
+  function submit(text, source) {
+    const t = String(text || "").trim();
+    if (!t) return;
+    row("user", source === "voice" ? "VOX" : "YOU", t);
+    LOG.push("info", (source === "voice" ? "Voice" : "Text") + " directive received");
+    const id = uid();
+    S.turnId = id;
+    if (TRANSPORT.isOpen()) {
+      TRANSPORT.send(source === "voice" ? { type: "voice", text: t, id } : { type: "chat", text: t, id });
+      setMode("thinking");
+      beginStream(id);
+    } else {
+      SIM.reply(t);
+    }
+  }
+
+  return { system, error, token, done, beginStream, submit, row };
+})();
+
+/* ============================================================= §T BOOT === */
+(function boot() {
+  // Corner brackets on every panel — never a plain border.
+  for (const p of document.querySelectorAll(".panel")) {
+    for (const c of ["tl", "tr", "bl", "br"]) {
+      const i = document.createElement("i");
+      i.className = "cb " + c;
+      p.appendChild(i);
+    }
+  }
+
+  VITALS.build();
+  DIAG.build();
+  CHIPS.build();
+  TTS.init();
+  CLOCK.initGeo();
+  SIM.init();
+
+  // Command bar wiring
+  const input = $("input"), cmdRow = $("cmdRow");
+  input.addEventListener("input", () => { cmdRow.dataset.typing = input.value ? "1" : "0"; });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); COMMS.submit(input.value, "text"); input.value = ""; cmdRow.dataset.typing = "0"; }
+    if (e.key === "Escape") { input.value = ""; cmdRow.dataset.typing = "0"; if (S.turnId && TRANSPORT.isOpen()) TRANSPORT.send({ type: "cancel", id: S.turnId }); }
+  });
+  $("sendBtn").addEventListener("click", () => { COMMS.submit(input.value, "text"); input.value = ""; cmdRow.dataset.typing = "0"; input.focus(); });
+  $("micBtn").addEventListener("click", () => { S.toggles.voice ? VOICE.stop() : VOICE.start(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "/" && document.activeElement !== input) { e.preventDefault(); input.focus(); }
+  });
+
+  // Single shared render loop — every module is a subscriber.
+  onFrame(CORE.draw);
+  onFrame(RETICLE.draw);
+  onFrame(RADAR.draw);
+  onFrame(AUDIO.draw);
+  onFrame(WAVE.draw);
+  onFrame(VITALS.draw);
+  onFrame(CLOCK.draw);
+  onFrame(DIAG.draw);
+  onFrame(VISION.draw);
+  onFrame(SIM.step);
+  startLoop();
+
+  // Boot chatter
+  const BOOT_LINES = [
+    ["ok",    "Core lattice initialised — " + CORE.COUNT + " nodes"],
+    ["info",  "Reticle assembly phase-locked"],
+    ["info",  "Telemetry channel open"],
+    ["debug", "Geodetic reference loaded"],
+    ["ok",    "HUD render pipeline nominal"],
+  ];
+  BOOT_LINES.forEach((l, i) => setTimeout(() => LOG.push(l[0], l[1]), 180 + i * 190));
+  setTimeout(() => {
+    COMMS.system("J.A.R.V.I.S. online. " + (VOICE.available ? "Voice interface available — engage the VOICE chip." : "Voice interface unavailable in this browser."));
+  }, 900);
+
+  TRANSPORT.connect();
+  CHIPS.sync();
+})();
+</script>
+</body>
+</html>
